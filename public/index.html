@@ -187,10 +187,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 <script>
 // Bot definitions (matching Paperclip + Telegram Command Center)
 const BOTS = [
-  { id: 'seo', name: 'SEO Analysis Bot', username: '@maximo_seo_bot', icon: '🔍', color: '#10b981', model: 'GPT-4o', role: 'SEO Expert', capabilities: ['keyword-research','technical-audit','backlink-analysis','serp-tracking'], supabaseId: '06dfe045-8d13-4c74-bbd4-9d09c9aee52e' },
-  { id: 'support', name: 'Customer Support Bot', username: '@support_agent_bot', icon: '💬', color: '#3b82f6', model: 'Claude 3.5', role: 'Support Agent', capabilities: ['tickets','knowledge-base','live-chat','escalation'], supabaseId: '7c51f0c5-fcba-44d0-a670-fede799452e4' },
-  { id: 'content', name: 'Content Ops Bot', username: '@content_ops_bot', icon: '✍️', color: '#ec4899', model: 'GPT-5.5', role: 'Content Creator', capabilities: ['blog','copywriting','social-media','email-marketing'], supabaseId: '2d058e70-0cae-4b6e-a7f7-3280c01ae4fc' },
-  { id: 'zero', name: 'Agent Zero', username: '@AgentZeroV64Bot', icon: '⚡', color: '#f59e0b', model: 'GPT-5.5', role: 'Experimental', capabilities: ['testing','automation','multi-task','prototyping'], supabaseId: '2ca803ad-b4bd-44a2-abd1-54a7ccce8313' }
+  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', capabilities: ['coding','research','planning','automation'], supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0' },
+  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', icon: '🎯', color: '#3b82f6', model: 'Claude', role: 'Advanced Reasoning', capabilities: ['analysis','coding','writing','problem-solving'], supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224' },
+  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', icon: '⚡', color: '#ec4899', model: 'Nous', role: 'Fast & Efficient', capabilities: ['content-creation','automation','multi-task'], supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a' },
+  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', icon: '💻', color: '#f59e0b', model: 'Codex', role: 'Code Generation', capabilities: ['development','debugging','refactoring','testing'], supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d' }
 ];
 
 let activeBot = null;
@@ -491,7 +491,7 @@ document.getElementById('chatInput').addEventListener('keydown', e => {
 
 // Init
 renderBots();
-selectBot('seo');
+selectBot('nous');
 </script>
 </body>
 </html>
