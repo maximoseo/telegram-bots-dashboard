@@ -17,13 +17,28 @@ let tokensLoaded = false;
 
 // Bot definitions
 const BOTS = [
-  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721 },
-  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224', botApiId: 8885902648 },
-  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a', botApiId: 8707123248 },
-  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970 }
+  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721, envVar: 'BOT_TOKEN_NOUS' },
+  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224', botApiId: 8885902648, envVar: 'BOT_TOKEN_CLAUDE' },
+  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a', botApiId: 8707123248, envVar: 'BOT_TOKEN_NOUS2' },
+  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970, envVar: 'BOT_TOKEN_CODEX' }
 ];
 
-// ─── Load tokens from Supabase ────────────────────────────────
+// ─── Load tokens from environment variables (primary source) ──
+function loadTokensFromEnv() {
+  let loaded = 0;
+  for (const bot of BOTS) {
+    const val = (process.env[bot.envVar] || '').trim();
+    if (val) {
+      BOT_TOKENS[bot.id] = val;
+      loaded++;
+    }
+  }
+  if (loaded > 0) tokensLoaded = true;
+  console.log(`✅ Bot tokens loaded from env: ${loaded}/${BOTS.length}`);
+  return loaded;
+}
+
+// ─── Load tokens from Supabase (backup — fills empty slots only) ─
 async function loadTokensFromDB() {
   try {
     const resp = await fetch(`${SB_URL}/rest/v1/bot_tokens?select=*`, {
@@ -32,14 +47,17 @@ async function loadTokensFromDB() {
     if (!resp.ok) return;
     const rows = await resp.json();
     if (!Array.isArray(rows)) return;
-    
+
+    let filled = 0;
     for (const row of rows) {
-      if (row.bot_id && row.token) {
+      // Env vars take priority — only use the DB value when no env token is set.
+      if (row.bot_id && row.token && !BOT_TOKENS[row.bot_id]) {
         BOT_TOKENS[row.bot_id] = row.token;
+        filled++;
       }
     }
-    tokensLoaded = true;
-    console.log('✅ Bot tokens loaded from Supabase:', Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length);
+    if (Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length > 0) tokensLoaded = true;
+    console.log(`✅ Bot tokens from Supabase (backup): filled ${filled} empty slot(s). Total configured: ${Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length}`);
   } catch (e) {
     console.log('⚠️ Could not load tokens from DB:', e.message);
   }
@@ -315,6 +333,8 @@ app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime()
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Startup ─────────────────────────────────────────────────
+// Primary source: environment variables. Backup: Supabase bot_tokens table.
+loadTokensFromEnv();
 loadTokensFromDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
