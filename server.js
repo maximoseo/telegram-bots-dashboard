@@ -23,22 +23,21 @@ const BOTS = [
   { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970, envVar: 'BOT_TOKEN_CODEX' }
 ];
 
-// ─── Load tokens from environment variables (primary source) ──
+// ─── Load tokens from environment variables (backup) ──────────
 function loadTokensFromEnv() {
   let loaded = 0;
   for (const bot of BOTS) {
     const val = (process.env[bot.envVar] || '').trim();
-    if (val) {
+    if (val && val.length > 20) {  // skip redacted/placeholder values
       BOT_TOKENS[bot.id] = val;
       loaded++;
     }
   }
-  if (loaded > 0) tokensLoaded = true;
-  console.log(`✅ Bot tokens loaded from env: ${loaded}/${BOTS.length}`);
+  if (loaded > 0) console.log(`✅ Bot tokens from env vars: ${loaded}/${BOTS.length}`);
   return loaded;
 }
 
-// ─── Load tokens from Supabase (backup — fills empty slots only) ─
+// ─── Load tokens from Supabase (primary source) ───────────────
 async function loadTokensFromDB() {
   try {
     const resp = await fetch(`${SB_URL}/rest/v1/bot_tokens?select=*`, {
@@ -50,8 +49,7 @@ async function loadTokensFromDB() {
 
     let filled = 0;
     for (const row of rows) {
-      // Env vars take priority — only use the DB value when no env token is set.
-      if (row.bot_id && row.token && !BOT_TOKENS[row.bot_id]) {
+      if (row.bot_id && row.token && row.token.length > 20) {
         BOT_TOKENS[row.bot_id] = row.token;
         filled++;
       }
@@ -333,10 +331,11 @@ app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime()
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Startup ─────────────────────────────────────────────────
-// Primary source: environment variables. Backup: Supabase bot_tokens table.
-loadTokensFromEnv();
+// Primary source: Supabase bot_tokens table. Backup: environment variables.
 loadTokensFromDB().then(() => {
+  loadTokensFromEnv();  // fill any remaining gaps from env vars
   app.listen(PORT, '0.0.0.0', () => {
+    tokensLoaded = true;
     const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
     console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens configured)`);
   });
