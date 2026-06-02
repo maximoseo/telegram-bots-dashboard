@@ -154,6 +154,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 <div class="hdr">
   <div class="logo"><span>🤖</span><h1>Telegram Bots Dashboard</h1></div>
   <div class="rt">
+    <button class="hdr-btn" onclick="showSetup()" title="Configure bot tokens">⚙️ Setup</button>
     <button class="hdr-btn" onclick="refreshAll()" title="Refresh all data">🔄 Refresh</button>
     <button class="hdr-btn" onclick="showShortcuts()" title="Keyboard shortcuts">⌨️</button>
     <div class="pill online" id="statusPill"><div class="dot"></div><span id="statusText">Connected</span></div>
@@ -236,6 +237,21 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
       <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span> Export chat</div>
       <div><span class="kbd">Ctrl</span>+<span class="kbd">R</span> Refresh all</div>
       <div><span class="kbd">Esc</span> Close modal / Clear search</div>
+    </div>
+  </div>
+</div>
+
+<!-- Setup Modal -->
+<div class="modal-overlay" id="setupModal">
+  <div class="modal" style="max-width:600px">
+    <h3><button class="close" onclick="hideSetup()">✕</button>⚙️ Bot Token Setup</h3>
+    <div class="body">
+      <p style="font-size:11px;color:var(--mt);margin-bottom:16px">Enter your Telegram Bot API tokens. Get them from <a href="https://t.me/BotFather" target="_blank" style="color:var(--ac2)">@BotFather</a>.</p>
+      <div id="setupStatus" style="margin-bottom:16px"></div>
+      <div id="setupForms"></div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="hdr-btn" onclick="checkSetupStatus()">🔄 Check Status</button>
+      </div>
     </div>
   </div>
 </div>
@@ -756,6 +772,69 @@ document.addEventListener('click', e => {
 function showShortcuts() { document.getElementById('shortcutsModal').classList.add('show'); }
 function hideShortcuts() { document.getElementById('shortcutsModal').classList.remove('show'); }
 
+// ─── Setup Modal ──────────────────────────────────────────────
+function showSetup() {
+  document.getElementById('setupModal').classList.add('show');
+  checkSetupStatus();
+}
+function hideSetup() { document.getElementById('setupModal').classList.remove('show'); }
+
+async function checkSetupStatus() {
+  try {
+    const resp = await fetch('/api/setup/status');
+    const data = await resp.json();
+    
+    const statusEl = document.getElementById('setupStatus');
+    if (data.configured === 4) {
+      statusEl.innerHTML = '<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);padding:8px 12px;border-radius:8px;font-size:11px;color:var(--gn2)">✅ All 4 bots configured!</div>';
+    } else {
+      statusEl.innerHTML = `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);padding:8px 12px;border-radius:8px;font-size:11px;color:var(--yl)">⚠️ ${data.configured}/4 bots configured. Enter tokens below.</div>`;
+    }
+    
+    const formsEl = document.getElementById('setupForms');
+    formsEl.innerHTML = data.bots.map(b => `
+      <div style="margin-bottom:12px;padding:10px;background:var(--s2);border:1px solid var(--b1);border-radius:8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:16px">${BOTS.find(x=>x.id===b.id)?.icon || '🤖'}</span>
+          <strong style="font-size:12px">${b.name}</strong>
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;${b.hasToken ? 'background:rgba(16,185,129,.15);color:var(--gn2)' : 'background:rgba(239,68,68,.15);color:var(--rd)'}">${b.hasToken ? '✅ Configured' : '❌ Missing'}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <input type="password" id="token-${b.id}" placeholder="Paste bot token from @BotFather..." style="flex:1;background:var(--bg);border:1px solid var(--b1);border-radius:6px;padding:6px 10px;color:var(--t1);font-size:11px;font-family:var(--mono)" ${b.hasToken ? 'value="••••••••"' : ''}>
+          <button class="hdr-btn" onclick="saveToken('${b.id}')" style="white-space:nowrap">Save</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('setupStatus').innerHTML = `<div style="color:var(--rd);font-size:11px">Error: ${e.message}</div>`;
+  }
+}
+
+async function saveToken(botId) {
+  const input = document.getElementById(`token-${botId}`);
+  const token = input.value.trim();
+  if (!token || token === '••••••••') { showToast('Enter a valid token', 'error'); return; }
+  
+  try {
+    const resp = await fetch('/api/setup/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ botId, token })
+    });
+    const data = await resp.json();
+    
+    if (data.ok) {
+      showToast(`✅ ${data.bot.first_name} configured!`, 'success');
+      checkSetupStatus();
+      checkBotHealth();
+    } else {
+      showToast(`❌ ${data.error}`, 'error');
+    }
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
 // ─── Utilities ────────────────────────────────────────────────
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function timeAgo(s) {
@@ -787,6 +866,11 @@ checkBotHealth();
 loadStats();
 selectBot('nous');
 startAutoRefresh();
+
+// Auto-show setup if no tokens configured
+fetch('/api/setup/status').then(r=>r.json()).then(d => {
+  if (d.configured === 0) showSetup();
+}).catch(()=>{});
 </script>
 </body>
 </html>
