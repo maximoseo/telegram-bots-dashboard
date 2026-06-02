@@ -1,0 +1,11 @@
+services:
+  - type: web_service
+    name: telegram-bots-dashboard
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: SUPABASE_URL
+        value: https://jzfamdshbfbwolupywrw.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
