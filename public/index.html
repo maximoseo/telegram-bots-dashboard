@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#08070c">
-<meta name="description" content="Telegram Bots Dashboard — Chat, Projects, Search">
+<meta name="description" content="Telegram Bots Dashboard — Chat, Projects, Search, Export">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -15,100 +15,138 @@
 body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden}
 ::selection{background:var(--ac);color:#fff}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--b2);border-radius:3px}
 
 /* Header */
-.hdr{background:linear-gradient(135deg,#0f0f1a,#1a1030 50%,#0f1a2a);border-bottom:1px solid var(--b1);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr{background:linear-gradient(135deg,#0f0f1a,#1a1030 50%,#0f1a2a);border-bottom:1px solid var(--b1);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .hdr .logo{display:flex;align-items:center;gap:10px}
-.hdr .logo span{font-size:24px}
-.hdr .logo h1{font-size:17px;font-weight:700;background:linear-gradient(135deg,var(--ac2),var(--pk));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hdr .rt{display:flex;gap:12px;align-items:center}
-.pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600}
+.hdr .logo span{font-size:22px}
+.hdr .logo h1{font-size:16px;font-weight:700;background:linear-gradient(135deg,var(--ac2),var(--pk));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr .rt{display:flex;gap:10px;align-items:center}
+.pill{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600}
 .pill.online{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--gn2)}
 .pill.offline{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--rd)}
-.pill .dot{width:6px;height:6px;border-radius:50%;animation:pulse 2s infinite}
+.pill .dot{width:5px;height:5px;border-radius:50%;animation:pulse 2s infinite}
 .pill.online .dot{background:var(--gn)}
 .pill.offline .dot{background:var(--rd)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.clk{font-size:11px;color:var(--mt);font-variant-numeric:tabular-nums}
+.clk{font-size:10px;color:var(--mt);font-variant-numeric:tabular-nums}
+.hdr-btn{background:var(--s3);border:1px solid var(--b1);color:var(--t2);padding:5px 10px;border-radius:6px;font-size:10px;cursor:pointer;font-family:inherit;transition:all .2s}
+.hdr-btn:hover{background:var(--b1);color:var(--t1)}
 
 /* Layout */
-.main{display:grid;grid-template-columns:280px 1fr 340px;height:calc(100vh - 52px)}
+.main{display:grid;grid-template-columns:260px 1fr 320px;height:calc(100vh - 48px)}
 
-/* Sidebar — Bot List */
+/* Sidebar */
 .sidebar{background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto}
-.sidebar h2{padding:16px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-weight:600}
-.bot-item{padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--b1);transition:all .2s;display:flex;align-items:center;gap:12px}
+.sidebar h2{padding:14px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-weight:600}
+.bot-item{padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--b1);transition:all .15s;display:flex;align-items:center;gap:10px}
 .bot-item:hover{background:var(--s2)}
 .bot-item.active{background:var(--s2);border-left:3px solid var(--ac)}
-.bot-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.bot-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .bot-info{flex:1;min-width:0}
-.bot-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bot-role{font-size:11px;color:var(--mt);margin-top:2px}
-.bot-meta{display:flex;gap:8px;margin-top:4px}
-.bot-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase}
+.bot-name{font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bot-role{font-size:10px;color:var(--mt);margin-top:1px}
+.bot-meta{display:flex;gap:6px;margin-top:3px}
+.bot-badge{font-size:8px;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
 .badge-online{background:rgba(16,185,129,.15);color:var(--gn2)}
-.badge-paused{background:rgba(245,158,11,.15);color:var(--yl)}
+.badge-offline{background:rgba(239,68,68,.15);color:var(--rd)}
+.badge-checking{background:rgba(245,158,11,.15);color:var(--yl)}
 .badge-model{background:var(--s3);color:var(--mt);border:1px solid var(--b1)}
+.badge-latency{background:var(--s3);color:var(--mt);font-size:7px}
 
-/* Center — Chat Area */
+/* Center */
 .chat-area{display:flex;flex-direction:column;background:var(--bg)}
-.chat-header{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:var(--s1)}
-.chat-header .bot-avatar{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
-.chat-header .info h3{font-size:14px;font-weight:700}
-.chat-header .info p{font-size:11px;color:var(--mt)}
-.chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
-.msg{max-width:80%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-wrap:break-word}
-.msg.user{align-self:flex-end;background:var(--ac);color:#fff;border-bottom-right-radius:4px}
-.msg.bot{align-self:flex-start;background:var(--s2);border:1px solid var(--b1);border-bottom-left-radius:4px}
-.msg .time{font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;display:block}
+.chat-header{padding:12px 16px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px;background:var(--s1)}
+.chat-header .bot-avatar{width:32px;height:32px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.chat-header .info h3{font-size:13px;font-weight:700}
+.chat-header .info p{font-size:10px;color:var(--mt)}
+.chat-header .actions{margin-left:auto;display:flex;gap:6px}
+.chat-header .actions button{background:var(--s3);border:1px solid var(--b1);color:var(--t2);padding:4px 8px;border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;transition:all .15s}
+.chat-header .actions button:hover{background:var(--b1);color:var(--t1)}
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:80%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;word-wrap:break-word;position:relative}
+.msg.user{align-self:flex-end;background:var(--ac);color:#fff;border-bottom-right-radius:3px}
+.msg.bot{align-self:flex-start;background:var(--s2);border:1px solid var(--b1);border-bottom-left-radius:3px}
+.msg .time{font-size:8px;color:rgba(255,255,255,.4);margin-top:3px;display:block}
 .msg.bot .time{color:var(--mt)}
-.msg.system{align-self:center;background:var(--s1);border:1px dashed var(--b1);font-size:11px;color:var(--mt);padding:6px 12px}
-.chat-input{padding:14px 20px;border-top:1px solid var(--b1);display:flex;gap:10px;background:var(--s1)}
-.chat-input input{flex:1;background:var(--bg);border:1px solid var(--b1);border-radius:var(--rs);padding:10px 14px;color:var(--t1);font-size:13px;font-family:inherit}
-.chat-input input:focus{outline:none;border-color:var(--ac)}
-.chat-input button{background:var(--ac);color:#fff;border:none;border-radius:var(--rs);padding:10px 16px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
-.chat-input button:hover{background:#6d28d9}
+.msg.system{align-self:center;background:var(--s1);border:1px dashed var(--b1);font-size:10px;color:var(--mt);padding:4px 10px}
+.msg code{background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px;font-family:var(--mono);font-size:11px}
+.msg pre{background:rgba(0,0,0,.3);padding:8px;border-radius:6px;overflow-x:auto;margin:6px 0;font-family:var(--mono);font-size:11px}
+.msg pre code{background:none;padding:0}
+.msg.error{align-self:center;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--rd);font-size:10px}
+.typing-indicator{display:flex;gap:4px;padding:8px 12px;align-self:flex-start}
+.typing-indicator span{width:6px;height:6px;background:var(--mt);border-radius:50%;animation:typing 1.4s infinite}
+.typing-indicator span:nth-child(2){animation-delay:.2s}
+.typing-indicator span:nth-child(3){animation-delay:.4s}
+@keyframes typing{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
 
-/* Right Panel — Projects & Search */
+/* Chat Input */
+.chat-input{padding:12px 16px;border-top:1px solid var(--b1);display:flex;gap:8px;background:var(--s1)}
+.chat-input input{flex:1;background:var(--bg);border:1px solid var(--b1);border-radius:var(--rs);padding:8px 12px;color:var(--t1);font-size:12px;font-family:inherit;transition:border-color .2s}
+.chat-input input:focus{outline:none;border-color:var(--ac)}
+.chat-input input:disabled{opacity:.5}
+.chat-input button{background:var(--ac);color:#fff;border:none;border-radius:var(--rs);padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;font-size:12px;transition:background .2s;white-space:nowrap}
+.chat-input button:hover{background:#6d28d9}
+.chat-input button:disabled{opacity:.5;cursor:default}
+.chat-input .send-icon{display:none}
+
+/* Right Panel */
 .right-panel{background:var(--s1);border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto}
 .right-panel .tabs{display:flex;border-bottom:1px solid var(--b1)}
-.right-panel .tab{flex:1;padding:12px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;color:var(--mt)}
+.right-panel .tab{flex:1;padding:10px;text-align:center;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;color:var(--mt);border-bottom:2px solid transparent}
 .right-panel .tab:hover{color:var(--t1)}
-.right-panel .tab.active{color:var(--ac2);border-bottom:2px solid var(--ac)}
-.search-box{padding:12px;border-bottom:1px solid var(--b1)}
-.search-box input{width:100%;background:var(--bg);border:1px solid var(--b1);border-radius:var(--rs);padding:8px 12px;color:var(--t1);font-size:12px;font-family:inherit}
+.right-panel .tab.active{color:var(--ac2);border-bottom-color:var(--ac)}
+.search-box{padding:10px;border-bottom:1px solid var(--b1)}
+.search-box input{width:100%;background:var(--bg);border:1px solid var(--b1);border-radius:var(--rs);padding:7px 10px;color:var(--t1);font-size:11px;font-family:inherit}
 .search-box input:focus{outline:none;border-color:var(--ac)}
 .project-list{flex:1;overflow-y:auto}
-.project-item{padding:12px 14px;border-bottom:1px solid var(--b1);cursor:pointer;transition:background .15s}
+.project-item{padding:10px 12px;border-bottom:1px solid var(--b1);cursor:pointer;transition:background .1s}
 .project-item:hover{background:var(--s2)}
-.project-item h4{font-size:13px;font-weight:600;margin-bottom:4px}
-.project-item p{font-size:11px;color:var(--mt);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.project-item .meta{display:flex;gap:8px;margin-top:6px;font-size:10px;color:var(--mt)}
-.project-item .meta .tag{padding:2px 6px;border-radius:4px;background:var(--s3);border:1px solid var(--b1)}
+.project-item h4{font-size:12px;font-weight:600;margin-bottom:3px}
+.project-item p{font-size:10px;color:var(--mt);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.project-item .meta{display:flex;gap:6px;margin-top:4px;font-size:9px;color:var(--mt)}
+.project-item .meta .tag{padding:1px 5px;border-radius:3px;background:var(--s3);border:1px solid var(--b1)}
 
-/* Stats Panel */
-.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px}
-.stat-card{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;text-align:center}
-.stat-card .num{font-size:22px;font-weight:800}
-.stat-card .label{font-size:10px;color:var(--mt);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-.stat-card.green .num{color:var(--gn2)}
-.stat-card.blue .num{color:var(--ac2)}
-.stat-card.yellow .num{color:var(--yl)}
-.stat-card.red .num{color:var(--rd)}
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px}
+.stat-card{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:10px;text-align:center}
+.stat-card .num{font-size:20px;font-weight:800}
+.stat-card .label{font-size:9px;color:var(--mt);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.stat-card.green .num{color:var(--gn2)}.stat-card.blue .num{color:var(--ac2)}.stat-card.yellow .num{color:var(--yl)}.stat-card.red .num{color:var(--rd)}
 
-/* Empty States */
-.empty{text-align:center;padding:40px 20px;color:var(--mt)}
-.empty .icon{font-size:40px;opacity:.5;margin-bottom:8px}
-.empty p{font-size:12px}
+/* Empty */
+.empty{text-align:center;padding:30px 16px;color:var(--mt)}
+.empty .icon{font-size:36px;opacity:.4;margin-bottom:6px}
+.empty p{font-size:11px}
 
 /* Toast */
-.toast{position:fixed;bottom:20px;right:20px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:10px 18px;font-size:12px;z-index:999;transform:translateY(80px);opacity:0;transition:all .3s;box-shadow:var(--sh)}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:8px 14px;font-size:11px;z-index:999;transform:translateY(80px);opacity:0;transition:all .3s;box-shadow:var(--sh)}
 .toast.show{transform:translateY(0);opacity:1}
-.toast.success{border-color:var(--gn)}
-.toast.error{border-color:var(--rd)}
+.toast.success{border-color:var(--gn)}.toast.error{border-color:var(--rd)}.toast.info{border-color:var(--bl)}
+
+/* Search Results Overlay */
+.search-results{position:absolute;top:100%;left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:0 0 var(--rs) var(--rs);max-height:300px;overflow-y:auto;z-index:50;display:none}
+.search-results.show{display:block}
+.search-result-item{padding:8px 12px;border-bottom:1px solid var(--b1);cursor:pointer;font-size:11px;transition:background .1s}
+.search-result-item:hover{background:var(--s3)}
+.search-result-item .sr-type{font-size:8px;text-transform:uppercase;color:var(--ac2);margin-bottom:2px}
+.search-result-item .sr-content{color:var(--t2);line-height:1.4}
+.search-result-item .sr-meta{font-size:9px;color:var(--mt);margin-top:2px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);width:90%;max-width:500px;max-height:80vh;overflow-y:auto;box-shadow:var(--sh)}
+.modal h3{padding:16px;border-bottom:1px solid var(--b1);font-size:14px}
+.modal .body{padding:16px}
+.modal .close{float:right;background:none;border:none;color:var(--mt);cursor:pointer;font-size:18px;line-height:1}
+
+/* Keyboard shortcut hints */
+.kbd{display:inline-block;padding:1px 4px;background:var(--s3);border:1px solid var(--b2);border-radius:3px;font-family:var(--mono);font-size:9px;color:var(--mt);line-height:1.4}
 
 /* Responsive */
-@media(max-width:900px){.main{grid-template-columns:1fr}.sidebar,.right-panel{display:none}}
+@media(max-width:1000px){.main{grid-template-columns:1fr}.sidebar,.right-panel{display:none}}
 </style>
 </head>
 <body>
@@ -116,68 +154,88 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 <div class="hdr">
   <div class="logo"><span>🤖</span><h1>Telegram Bots Dashboard</h1></div>
   <div class="rt">
+    <button class="hdr-btn" onclick="refreshAll()" title="Refresh all data">🔄 Refresh</button>
+    <button class="hdr-btn" onclick="showShortcuts()" title="Keyboard shortcuts">⌨️</button>
     <div class="pill online" id="statusPill"><div class="dot"></div><span id="statusText">Connected</span></div>
     <div class="clk" id="clk"></div>
   </div>
 </div>
 
 <div class="main">
-  <!-- Sidebar: Bot List -->
+  <!-- Sidebar -->
   <div class="sidebar">
     <h2>🤖 Bots</h2>
     <div id="botList"></div>
-    <div style="padding:16px;margin-top:auto">
+    <div style="padding:12px;margin-top:auto">
       <div class="stat-card green"><div class="num" id="totalBots">4</div><div class="label">Active Bots</div></div>
     </div>
   </div>
 
-  <!-- Center: Chat Area -->
+  <!-- Center -->
   <div class="chat-area">
     <div class="chat-header" id="chatHeader">
       <div class="bot-avatar" id="chatAvatar" style="background:var(--s3)">🤖</div>
       <div class="info">
         <h3 id="chatBotName">Select a bot</h3>
-        <p id="chatBotRole">Choose a bot from the sidebar to start chatting</p>
+        <p id="chatBotRole">Choose a bot from the sidebar</p>
+      </div>
+      <div class="actions">
+        <button onclick="exportConversation()" title="Export chat">📥 Export</button>
+        <button onclick="clearChat()" title="Clear local chat">🗑️ Clear</button>
       </div>
     </div>
     <div class="chat-messages" id="chatMessages">
       <div class="empty"><div class="icon">💬</div><p>Select a bot to view conversation history</p></div>
     </div>
     <div class="chat-input">
-      <input type="text" id="chatInput" placeholder="Type a message..." disabled>
-      <button id="sendBtn" disabled onclick="sendMessage()">Send</button>
+      <input type="text" id="chatInput" placeholder="Type a message... (Enter to send)" disabled>
+      <button id="sendBtn" disabled onclick="sendMessage()">Send ➤</button>
     </div>
   </div>
 
-  <!-- Right Panel: Projects & Stats -->
+  <!-- Right Panel -->
   <div class="right-panel">
     <div class="tabs">
-      <div class="tab active" onclick="switchTab('projects')">📁 Projects</div>
-      <div class="tab" onclick="switchTab('stats')">📊 Stats</div>
+      <div class="tab active" data-tab="projects" onclick="switchTab('projects')">📁 Projects</div>
+      <div class="tab" data-tab="stats" onclick="switchTab('stats')">📊 Stats</div>
     </div>
     
-    <!-- Projects Tab -->
     <div id="projectsTab">
-      <div class="search-box">
-        <input type="text" id="projectSearch" placeholder="🔍 Search projects..." oninput="filterProjects()">
+      <div class="search-box" style="position:relative">
+        <input type="text" id="globalSearch" placeholder="🔍 Search messages & projects..." oninput="handleSearch(this.value)">
+        <div class="search-results" id="searchResults"></div>
       </div>
       <div class="project-list" id="projectList">
         <div class="empty"><div class="icon">📁</div><p>No projects yet</p></div>
       </div>
     </div>
 
-    <!-- Stats Tab -->
     <div id="statsTab" style="display:none">
       <div class="stats-grid">
         <div class="stat-card blue"><div class="num" id="statConvos">-</div><div class="label">Conversations</div></div>
         <div class="stat-card green"><div class="num" id="statMessages">-</div><div class="label">Messages</div></div>
-        <div class="stat-card yellow"><div class="num" id="statTokens">-</div><div class="label">Tokens Used</div></div>
-        <div class="stat-card red"><div class="num" id="statCost">-</div><div class="label">Cost ($)</div></div>
+        <div class="stat-card yellow"><div class="num" id="statTokens">-</div><div class="label">Tokens</div></div>
+        <div class="stat-card red"><div class="num" id="statCost">-</div><div class="label">Cost</div></div>
       </div>
-      <div style="padding:12px">
-        <h4 style="font-size:12px;color:var(--mt);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Per Bot Breakdown</h4>
+      <div style="padding:10px">
+        <h4 style="font-size:11px;color:var(--mt);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Per Bot</h4>
         <div id="botStats"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shortcuts Modal -->
+<div class="modal-overlay" id="shortcutsModal">
+  <div class="modal">
+    <h3><button class="close" onclick="hideShortcuts()">✕</button>⌨️ Keyboard Shortcuts</h3>
+    <div class="body" style="font-size:12px;line-height:2">
+      <div><span class="kbd">1</span>–<span class="kbd">4</span> Select bot</div>
+      <div><span class="kbd">Enter</span> Send message</div>
+      <div><span class="kbd">Ctrl</span>+<span class="kbd">K</span> Focus search</div>
+      <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span> Export chat</div>
+      <div><span class="kbd">Ctrl</span>+<span class="kbd">R</span> Refresh all</div>
+      <div><span class="kbd">Esc</span> Close modal / Clear search</div>
     </div>
   </div>
 </div>
@@ -185,82 +243,98 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 <div class="toast" id="toast"></div>
 
 <script>
-// Bot definitions (matching Paperclip + Telegram Command Center)
+// ─── Bot Definitions ──────────────────────────────────────────
 const BOTS = [
-  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', capabilities: ['coding','research','planning','automation'], supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0' },
-  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', icon: '🎯', color: '#3b82f6', model: 'Claude', role: 'Advanced Reasoning', capabilities: ['analysis','coding','writing','problem-solving'], supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224' },
-  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', icon: '⚡', color: '#ec4899', model: 'Nous', role: 'Fast & Efficient', capabilities: ['content-creation','automation','multi-task'], supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a' },
-  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', icon: '💻', color: '#f59e0b', model: 'Codex', role: 'Code Generation', capabilities: ['development','debugging','refactoring','testing'], supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d' }
+  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0' },
+  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', icon: '🎯', color: '#3b82f6', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224' },
+  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', icon: '⚡', color: '#ec4899', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a' },
+  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', icon: '💻', color: '#f59e0b', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d' }
 ];
 
 let activeBot = null;
 let conversations = [];
 let projects = [];
+let botHealth = {};
+let searchTimeout = null;
+let autoRefreshInterval = null;
 
-// Clock
+// ─── Clock ────────────────────────────────────────────────────
 function updateClock() {
   document.getElementById('clk').textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
 }
 updateClock(); setInterval(updateClock, 1000);
 
-// Render bot list
+// ─── Bot List ─────────────────────────────────────────────────
 function renderBots() {
-  document.getElementById('botList').innerHTML = BOTS.map(b => `
-    <div class="bot-item${activeBot?.id === b.id ? ' active' : ''}" onclick="selectBot('${b.id}')">
+  document.getElementById('botList').innerHTML = BOTS.map((b, i) => {
+    const h = botHealth[b.id];
+    const statusClass = !h ? 'badge-checking' : h.online ? 'badge-online' : 'badge-offline';
+    const statusText = !h ? 'checking...' : h.online ? `online · ${h.latency}ms` : 'offline';
+    return `
+    <div class="bot-item${activeBot?.id === b.id ? ' active' : ''}" onclick="selectBot('${b.id}')" title="Press ${i+1}">
       <div class="bot-icon" style="background:${b.color}20;color:${b.color}">${b.icon}</div>
       <div class="bot-info">
         <div class="bot-name">${b.name}</div>
         <div class="bot-role">${b.role}</div>
         <div class="bot-meta">
-          <span class="bot-badge badge-online">online</span>
+          <span class="bot-badge ${statusClass}">${statusText}</span>
           <span class="bot-badge badge-model">${b.model}</span>
         </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
-// Select bot
+// ─── Bot Health Check ─────────────────────────────────────────
+async function checkBotHealth() {
+  try {
+    const resp = await fetch('/api/bots/health');
+    botHealth = await resp.json();
+    renderBots();
+  } catch (e) {
+    console.error('Health check failed:', e);
+  }
+}
+
+// ─── Select Bot ───────────────────────────────────────────────
 async function selectBot(id) {
   activeBot = BOTS.find(b => b.id === id);
   renderBots();
   
-  // Update chat header
   document.getElementById('chatAvatar').textContent = activeBot.icon;
   document.getElementById('chatAvatar').style.background = activeBot.color + '20';
   document.getElementById('chatBotName').textContent = activeBot.name;
-  document.getElementById('chatBotRole').textContent = `${activeBot.username} · ${activeBot.model} · ${activeBot.role}`;
+  const h = botHealth[id];
+  const status = h ? (h.online ? `✅ Online (${h.latency}ms)` : '❌ Offline') : '⏳ Checking...';
+  document.getElementById('chatBotRole').textContent = `${activeBot.username} · ${activeBot.model} · ${status}`;
   
-  // Enable input
   document.getElementById('chatInput').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   
-  // Load conversation history
   await loadConversation(id);
   await loadProjects(id);
-  await loadStats(id);
 }
 
-// Load conversation from Supabase
+// ─── Load Conversation ────────────────────────────────────────
 async function loadConversation(botId) {
   const bot = BOTS.find(b => b.id === botId);
   const el = document.getElementById('chatMessages');
   el.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Loading conversation...</p></div>';
   
   try {
-    // Fetch messages from the messages table for this bot
-    const resp = await fetch(`/api/sb/messages?bot_id=eq.${bot.supabaseId}&order=created_at.desc&limit=50`);
+    const resp = await fetch(`/api/sb/messages?bot_id=eq.${bot.supabaseId}&order=created_at.desc&limit=100`);
     const msgs = await resp.json();
     
     if (!Array.isArray(msgs) || !msgs.length) {
-      el.innerHTML = `<div class="empty"><div class="icon">${bot.icon}</div><p>No messages yet with ${bot.name}</p><p style="font-size:10px;margin-top:8px;color:var(--b2)">Start a conversation on Telegram: ${bot.username}</p></div>`;
+      el.innerHTML = `<div class="empty"><div class="icon">${bot.icon}</div><p>No messages yet with ${bot.name}</p><p style="font-size:9px;margin-top:6px;color:var(--b2)">Start a conversation below or on Telegram: ${bot.username}</p></div>`;
       return;
     }
     
     el.innerHTML = msgs.reverse().map(m => {
-      const isUser = m.role === 'user';
+      const isUser = m.direction === 'inbound' || m.sender_type === 'user' || m.role === 'user';
       const time = new Date(m.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      return `<div class="msg ${isUser ? 'user' : 'bot'}">${escapeHtml(m.content || m.text || '')}<span class="time">${time}</span></div>`;
+      const content = formatMessage(m.content || m.text || '');
+      return `<div class="msg ${isUser ? 'user' : 'bot'}">${content}<span class="time">${time}${m.llm_model ? ' · ' + m.llm_model : ''}</span></div>`;
     }).join('');
     
     el.scrollTop = el.scrollHeight;
@@ -269,7 +343,199 @@ async function loadConversation(botId) {
   }
 }
 
-// Load projects from Supabase
+// ─── Format Message (basic markdown) ──────────────────────────
+function formatMessage(text) {
+  if (!text) return '';
+  let s = escapeHtml(text);
+  // Code blocks
+  s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Links
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--ac2)">$1</a>');
+  // Line breaks
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+// ─── Send Message ─────────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !activeBot) return;
+  
+  input.value = '';
+  document.getElementById('sendBtn').disabled = true;
+  
+  // Add user message
+  addMessage('user', text);
+  
+  // Store in Supabase
+  try {
+    await fetch('/api/sb/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bot_id: activeBot.supabaseId,
+        direction: 'inbound',
+        sender_type: 'user',
+        content_type: 'text',
+        content: text,
+        created_at: new Date().toISOString()
+      })
+    });
+  } catch (e) {
+    console.error('Store error:', e);
+  }
+  
+  // Show typing indicator
+  showTyping();
+  
+  // Try to send via Telegram and get response
+  try {
+    // First, get available chats for this bot
+    const chatsResp = await fetch(`/api/telegram/${activeBot.id}/chats`);
+    const chatsData = await chatsResp.json();
+    
+    if (chatsData.ok && chatsData.chats && chatsData.chats.length > 0) {
+      // Send to the most recent chat
+      const chatId = chatsData.chats[0].id;
+      
+      const sendResp = await fetch(`/api/telegram/${activeBot.id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, text })
+      });
+      const sendData = await sendResp.json();
+      
+      hideTyping();
+      
+      if (sendData.ok) {
+        addMessage('system', `✅ Message sent via Telegram to ${chatsData.chats[0].username || chatId}`);
+        // Poll for bot response
+        await pollBotResponse(activeBot.id, chatId);
+      } else {
+        addMessage('error', `❌ Telegram error: ${sendData.error}`);
+      }
+    } else {
+      hideTyping();
+      // No chats available — try getUpdates to check
+      addMessage('system', `ℹ️ No active Telegram chats found for ${activeBot.name}. Start a conversation on Telegram first: ${activeBot.username}`);
+      
+      // Still try to get recent updates
+      const updatesResp = await fetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
+      const updatesData = await updatesResp.json();
+      if (updatesData.ok && updatesData.result && updatesData.result.length > 0) {
+        addMessage('system', `📬 Found ${updatesData.result.length} recent messages. Latest from: ${updatesData.result[updatesData.result.length-1]?.message?.chat?.username || 'unknown'}`);
+      }
+    }
+  } catch (e) {
+    hideTyping();
+    addMessage('error', `❌ Connection error: ${e.message}`);
+  }
+  
+  document.getElementById('sendBtn').disabled = false;
+  input.focus();
+}
+
+// ─── Poll for Bot Response ────────────────────────────────────
+async function pollBotResponse(botId, chatId) {
+  showTyping();
+  let attempts = 0;
+  const maxAttempts = 30; // 30 seconds
+  
+  const poll = async () => {
+    attempts++;
+    try {
+      const resp = await fetch(`/api/telegram/${botId}/updates?limit=5`);
+      const data = await resp.json();
+      
+      if (data.ok && data.result) {
+        // Look for a response from the bot to the chat
+        const botResponse = data.result
+          .filter(u => u.message && u.message.chat.id === chatId && u.message.from.is_bot)
+          .pop();
+        
+        if (botResponse) {
+          hideTyping();
+          const text = botResponse.message.text || botResponse.message.caption || '[Media]';
+          addMessage('bot', text);
+          
+          // Store in Supabase
+          try {
+            await fetch('/api/sb/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                bot_id: BOTS.find(b => b.id === botId).supabaseId,
+                direction: 'outbound',
+                sender_type: 'bot',
+                content_type: 'text',
+                content: text,
+                created_at: new Date().toISOString()
+              })
+            });
+          } catch (e) { console.error('Store error:', e); }
+          return;
+        }
+      }
+      
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 1000);
+      } else {
+        hideTyping();
+        addMessage('system', '⏱️ Bot response timeout — check Telegram for the reply');
+      }
+    } catch (e) {
+      if (attempts < maxAttempts) setTimeout(poll, 2000);
+      else { hideTyping(); addMessage('error', `❌ Polling error: ${e.message}`); }
+    }
+  };
+  
+  setTimeout(poll, 1500);
+}
+
+// ─── Message Helpers ──────────────────────────────────────────
+function addMessage(type, text) {
+  const el = document.getElementById('chatMessages');
+  // Remove empty state if present
+  const empty = el.querySelector('.empty');
+  if (empty) empty.remove();
+  
+  const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
+  div.innerHTML = `${type === 'bot' ? formatMessage(text) : escapeHtml(text)}<span class="time">${time}</span>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function showTyping() {
+  const el = document.getElementById('chatMessages');
+  const existing = el.querySelector('.typing-indicator');
+  if (existing) return;
+  const div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function hideTyping() {
+  document.querySelectorAll('.typing-indicator').forEach(el => el.remove());
+}
+
+function clearChat() {
+  if (!activeBot) return;
+  const el = document.getElementById('chatMessages');
+  el.innerHTML = `<div class="empty"><div class="icon">${activeBot.icon}</div><p>Chat cleared. New messages will appear here.</p></div>`;
+}
+
+// ─── Load Projects ────────────────────────────────────────────
 async function loadProjects(botId) {
   const el = document.getElementById('projectList');
   try {
@@ -289,7 +555,7 @@ async function loadProjects(botId) {
     
     renderProjects(projects);
   } catch (e) {
-    el.innerHTML = `<div class="empty"><div class="icon">⚠️</div><p>Failed to load</p></div>`;
+    el.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Failed to load</p></div>';
   }
 }
 
@@ -300,174 +566,197 @@ function renderProjects(items) {
     const ago = timeAgo(c.updated_at || c.created_at);
     return `
       <div class="project-item" onclick="openProject('${c.id}')">
-        <h4>${escapeHtml(c.title || c.topic || 'Untitled')}</h4>
-        <p>${escapeHtml(c.last_message || c.summary || c.description || '')}</p>
+        <h4>${escapeHtml(c.username || c.telegram_user_id || 'Conversation')}</h4>
+        <p>${escapeHtml(c.last_message || '')}</p>
         <div class="meta">
           ${bot ? `<span class="tag">${bot.icon} ${bot.name}</span>` : ''}
           <span>${ago}</span>
           ${c.message_count ? `<span>${c.message_count} msgs</span>` : ''}
+          ${c.total_tokens ? `<span>${(c.total_tokens/1000).toFixed(1)}K tok</span>` : ''}
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
-function filterProjects() {
-  const q = document.getElementById('projectSearch').value.toLowerCase();
-  if (!q) { renderProjects(projects); return; }
-  const filtered = projects.filter(p => 
-    (p.title || '').toLowerCase().includes(q) ||
-    (p.topic || '').toLowerCase().includes(q) ||
-    (p.last_message || '').toLowerCase().includes(q) ||
-    (p.summary || '').toLowerCase().includes(q)
-  );
-  renderProjects(filtered);
-}
-
-// Load stats
-async function loadStats(botId) {
-  try {
-    // Fetch stats
-    const [convosResp, msgsResp, llmResp] = await Promise.all([
-      fetch('/api/sb/conversations?select=count'),
-      fetch('/api/sb/messages?select=count'),
-      fetch('/api/sb/llm_calls?select=tokens_in,tokens_out,cost_usd')
-    ]);
-    
-    const convos = await convosResp.json();
-    const msgs = await msgsResp.json();
-    const llmCalls = await llmResp.json();
-    
-    document.getElementById('statConvos').textContent = Array.isArray(convos) ? convos.length : '-';
-    document.getElementById('statMessages').textContent = Array.isArray(msgs) ? msgs.length : '-';
-    
-    if (Array.isArray(llmCalls)) {
-      const totalTokens = llmCalls.reduce((s, c) => s + (c.tokens_in || 0) + (c.tokens_out || 0), 0);
-      const totalCost = llmCalls.reduce((s, c) => s + (c.cost_usd || 0), 0);
-      document.getElementById('statTokens').textContent = totalTokens > 1000 ? (totalTokens/1000).toFixed(1) + 'K' : totalTokens;
-      document.getElementById('statCost').textContent = '$' + totalCost.toFixed(2);
+// ─── Global Search ────────────────────────────────────────────
+async function handleSearch(query) {
+  const el = document.getElementById('searchResults');
+  if (!query || query.length < 2) { el.classList.remove('show'); return; }
+  
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await resp.json();
+      
+      let html = '';
+      if (data.conversations && data.conversations.length) {
+        html += data.conversations.slice(0, 5).map(c => {
+          const bot = BOTS.find(b => b.supabaseId === c.bot_id);
+          return `<div class="search-result-item" onclick="openProject('${c.id}')">
+            <div class="sr-type">📁 Conversation</div>
+            <div class="sr-content">${escapeHtml(c.username || c.telegram_user_id || '')}</div>
+            <div class="sr-meta">${bot ? bot.icon + ' ' + bot.name : ''} · ${timeAgo(c.updated_at)}</div>
+          </div>`;
+        }).join('');
+      }
+      if (data.messages && data.messages.length) {
+        html += data.messages.slice(0, 10).map(m => {
+          const bot = BOTS.find(b => b.supabaseId === m.bot_id);
+          return `<div class="search-result-item" onclick="highlightMessage('${m.id}')">
+            <div class="sr-type">💬 Message ${m.direction === 'inbound' ? '←' : '→'}</div>
+            <div class="sr-content">${escapeHtml((m.content || '').substring(0, 120))}</div>
+            <div class="sr-meta">${bot ? bot.icon + ' ' + bot.name : ''} · ${timeAgo(m.created_at)}</div>
+          </div>`;
+        }).join('');
+      }
+      
+      if (!html) html = '<div class="search-result-item"><div class="sr-content" style="color:var(--mt)">No results found</div></div>';
+      el.innerHTML = html;
+      el.classList.add('show');
+    } catch (e) {
+      el.innerHTML = '<div class="search-result-item"><div class="sr-content" style="color:var(--rd)">Search failed</div></div>';
+      el.classList.add('show');
     }
-    
-    // Per-bot stats
-    renderBotStats(llmCalls);
-  } catch (e) {
-    console.error('Stats error:', e);
-  }
+  }, 300);
 }
 
-function renderBotStats(llmCalls) {
-  const el = document.getElementById('botStats');
-  if (!Array.isArray(llmCalls)) { el.innerHTML = ''; return; }
-  
-  const byBot = {};
-  llmCalls.forEach(c => {
-    const bid = c.bot_id;
-    if (!byBot[bid]) byBot[bid] = { tokens: 0, cost: 0, calls: 0 };
-    byBot[bid].tokens += (c.tokens_in || 0) + (c.tokens_out || 0);
-    byBot[bid].cost += (c.cost_usd || 0);
-    byBot[bid].calls++;
-  });
-  
-  el.innerHTML = BOTS.map(b => {
-    const stats = byBot[b.supabaseId] || { tokens: 0, cost: 0, calls: 0 };
-    return `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1)">
-        <span style="font-size:18px">${b.icon}</span>
-        <div style="flex:1">
-          <div style="font-size:12px;font-weight:600">${b.name}</div>
-          <div style="font-size:10px;color:var(--mt)">${stats.calls} calls · ${stats.tokens > 1000 ? (stats.tokens/1000).toFixed(1)+'K' : stats.tokens} tokens</div>
-        </div>
-        <div style="font-size:13px;font-weight:700;color:var(--gn2)">$${stats.cost.toFixed(2)}</div>
-      </div>
-    `;
-  }).join('');
-}
-
-// Send message (via Telegram webhook or direct API)
-async function sendMessage() {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text || !activeBot) return;
-  
-  input.value = '';
-  
-  // Add user message to chat
-  addMessage('user', text);
-  
-  // Store in Supabase
-  try {
-    await fetch('/api/sb/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bot_id: activeBot.supabaseId,
-        role: 'user',
-        content: text,
-        created_at: new Date().toISOString()
-      })
-    });
-  } catch (e) {
-    console.error('Store error:', e);
-  }
-  
-  // Show typing indicator
-  addMessage('system', `${activeBot.icon} ${activeBot.name} is thinking...`);
-  
-  // In production, this would trigger the bot via Telegram API
-  // For now, simulate a response
-  setTimeout(() => {
-    removeSystemMessages();
-    addMessage('bot', `I received your message: "${text}". This is a preview — full bot responses will be connected via Telegram webhook.`);
-  }, 1500);
-}
-
-function addMessage(type, text) {
-  const el = document.getElementById('chatMessages');
-  const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const div = document.createElement('div');
-  div.className = `msg ${type}`;
-  div.innerHTML = `${escapeHtml(text)}<span class="time">${time}</span>`;
-  el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
-}
-
-function removeSystemMessages() {
-  document.querySelectorAll('.msg.system').forEach(el => el.remove());
-}
-
-// Open project detail
+// ─── Open Project ─────────────────────────────────────────────
 async function openProject(id) {
+  document.getElementById('searchResults').classList.remove('show');
+  document.getElementById('globalSearch').value = '';
+  
   try {
     const resp = await fetch(`/api/sb/conversations?id=eq.${id}&select=*`);
     const data = await resp.json();
     if (data.length) {
       const c = data[0];
-      // Load messages for this conversation
-      const msgsResp = await fetch(`/api/sb/messages?conversation_id=eq.${id}&order=created_at.asc&limit=100`);
+      const msgsResp = await fetch(`/api/sb/messages?conversation_id=eq.${id}&order=created_at.asc&limit=200`);
       const msgs = await msgsResp.json();
       
       const el = document.getElementById('chatMessages');
-      el.innerHTML = `<div class="msg system">📁 ${escapeHtml(c.title || c.topic || 'Conversation')}</div>` +
+      const bot = BOTS.find(b => b.supabaseId === c.bot_id);
+      el.innerHTML = `<div class="msg system">📁 ${escapeHtml(c.username || 'Conversation')} ${bot ? '· ' + bot.icon + ' ' + bot.name : ''}</div>` +
         (Array.isArray(msgs) ? msgs.map(m => {
-          const isUser = m.role === 'user';
+          const isUser = m.direction === 'inbound' || m.sender_type === 'user';
           const time = new Date(m.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-          return `<div class="msg ${isUser ? 'user' : 'bot'}">${escapeHtml(m.content || m.text || '')}<span class="time">${time}</span></div>`;
+          return `<div class="msg ${isUser ? 'user' : 'bot'}">${formatMessage(m.content || m.text || '')}<span class="time">${time}</span></div>`;
         }).join('') : '');
+      el.scrollTop = el.scrollHeight;
     }
   } catch (e) {
     showToast('Failed to load project', 'error');
   }
 }
 
-// Tab switching
-function switchTab(tab) {
-  document.querySelectorAll('.right-panel .tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('projectsTab').style.display = tab === 'projects' ? '' : 'none';
-  document.getElementById('statsTab').style.display = tab === 'stats' ? '' : 'none';
-  event.target.classList.add('active');
+// ─── Export ───────────────────────────────────────────────────
+async function exportConversation() {
+  if (!activeBot) return;
+  try {
+    const resp = await fetch(`/api/export/${activeBot.id}`);
+    const data = await resp.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${activeBot.name.replace(/\s+/g,'_')}_export_${new Date().toISOString().split('T')[0]}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast('Exported successfully!', 'success');
+  } catch (e) {
+    showToast('Export failed', 'error');
+  }
 }
 
-// Utilities
+// ─── Stats ────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const resp = await fetch('/api/stats');
+    const stats = await resp.json();
+    
+    document.getElementById('statConvos').textContent = stats.totalConversations;
+    document.getElementById('statMessages').textContent = stats.totalMessages;
+    document.getElementById('statTokens').textContent = stats.totalTokens > 1000 ? (stats.totalTokens/1000).toFixed(1) + 'K' : stats.totalTokens;
+    document.getElementById('statCost').textContent = '$' + stats.totalCost.toFixed(2);
+    
+    renderBotStats(stats.perBot);
+  } catch (e) {
+    console.error('Stats error:', e);
+  }
+}
+
+function renderBotStats(perBot) {
+  const el = document.getElementById('botStats');
+  el.innerHTML = BOTS.map(b => {
+    const s = perBot[b.id] || { conversations: 0, messages: 0, tokens: 0, cost: 0 };
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">
+        <span style="font-size:16px">${b.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:600">${b.name}</div>
+          <div style="font-size:9px;color:var(--mt)">${s.conversations} convos · ${s.messages} msgs · ${s.tokens > 1000 ? (s.tokens/1000).toFixed(1)+'K' : s.tokens} tok</div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--gn2)">$${s.cost.toFixed(2)}</div>
+      </div>`;
+  }).join('');
+}
+
+// ─── Tab Switch ───────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.right-panel .tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.right-panel .tab[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById('projectsTab').style.display = tab === 'projects' ? '' : 'none';
+  document.getElementById('statsTab').style.display = tab === 'stats' ? '' : 'none';
+  if (tab === 'stats') loadStats();
+}
+
+// ─── Refresh All ──────────────────────────────────────────────
+async function refreshAll() {
+  showToast('Refreshing...', 'info');
+  await Promise.all([
+    checkBotHealth(),
+    loadStats(),
+    activeBot ? selectBot(activeBot.id) : Promise.resolve()
+  ]);
+  showToast('Refreshed!', 'success');
+}
+
+// ─── Keyboard Shortcuts ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // Ctrl+K: focus search
+  if (e.ctrlKey && e.key === 'k') { e.preventDefault(); document.getElementById('globalSearch').focus(); return; }
+  // Ctrl+E: export
+  if (e.ctrlKey && e.key === 'e') { e.preventDefault(); exportConversation(); return; }
+  // Ctrl+R: refresh
+  if (e.ctrlKey && e.key === 'r') { e.preventDefault(); refreshAll(); return; }
+  // Escape: close modal or clear search
+  if (e.key === 'Escape') {
+    hideShortcuts();
+    document.getElementById('globalSearch').value = '';
+    document.getElementById('searchResults').classList.remove('show');
+    return;
+  }
+  // 1-4: select bot (only when not typing)
+  if (['1','2','3','4'].includes(e.key) && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+    selectBot(BOTS[parseInt(e.key)-1].id);
+  }
+});
+
+// Enter to send
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// Click outside search results to close
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-box')) {
+    document.getElementById('searchResults').classList.remove('show');
+  }
+});
+
+// ─── Modals ───────────────────────────────────────────────────
+function showShortcuts() { document.getElementById('shortcutsModal').classList.add('show'); }
+function hideShortcuts() { document.getElementById('shortcutsModal').classList.remove('show'); }
+
+// ─── Utilities ────────────────────────────────────────────────
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 function timeAgo(s) {
   if (!s) return '';
@@ -481,17 +770,23 @@ function showToast(msg, type='success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = `toast ${type} show`;
-  setTimeout(() => el.classList.remove('show'), 3000);
+  setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// Enter key to send
-document.getElementById('chatInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
+// ─── Auto-refresh ─────────────────────────────────────────────
+function startAutoRefresh() {
+  autoRefreshInterval = setInterval(() => {
+    if (activeBot) loadConversation(activeBot.id);
+    checkBotHealth();
+  }, 30000); // every 30s
+}
 
-// Init
+// ─── Init ─────────────────────────────────────────────────────
 renderBots();
+checkBotHealth();
+loadStats();
 selectBot('nous');
+startAutoRefresh();
 </script>
 </body>
 </html>
