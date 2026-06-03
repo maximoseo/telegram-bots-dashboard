@@ -1,7 +1,14 @@
 const express = require('express');
 const path = require('path');
+const helmet = require('helmet');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security headers — all standard protections
+app.use(helmet({
+  contentSecurityPolicy: false,  // dashboard has inline scripts
+  crossOriginEmbedderPolicy: false  // allow external iframes
+}));
 
 // Supabase
 const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
