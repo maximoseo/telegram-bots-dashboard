@@ -1,7 +1,11 @@
 const express = require('express');
+const helmet = require('helmet');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security headers
+app.use(helmet());
 
 // Supabase
 const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
@@ -17,7 +21,7 @@ let tokensLoaded = false;
 
 // Bot definitions
 const BOTS = [
-  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721, envVar: 'BOT_TOKEN_NOUS' },
+  { id: 'nous', name: 'HermesL64 Bot', username: '@HermesL64Bot', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721, envVar: 'BOT_TOKEN_NOUS' },
   { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224', botApiId: 8885902648, envVar: 'BOT_TOKEN_CLAUDE' },
   { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a', botApiId: 8707123248, envVar: 'BOT_TOKEN_NOUS2' },
   { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970, envVar: 'BOT_TOKEN_CODEX' }
@@ -79,12 +83,19 @@ async function saveTokenToDB(botId, token) {
   }
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Supabase Proxy ──────────────────────────────────────────
+// Table whitelist — only these tables are accessible through the proxy
+const ALLOWED_TABLES = ['messages', 'conversations', 'bot_tokens'];
+
 app.all('/api/sb/*', async (req, res) => {
   const restPath = req.params[0];
+  const table = restPath.split('?')[0].split('/')[0];
+  if (!ALLOWED_TABLES.includes(table)) {
+    return res.status(403).json({ error: `Forbidden: table '${table}' not in proxy whitelist` });
+  }
   const target = `${SB_URL}/rest/v1/${restPath}`;
   const headers = {
     'apikey': SB_KEY,
@@ -253,14 +264,14 @@ app.get('/api/stats', async (req, res) => {
 
     for (const bot of BOTS) stats.perBot[bot.id] = { conversations: 0, messages: 0, tokens: 0, cost: 0 };
 
+    // Per-bot: conversations from convos table
     if (Array.isArray(convos)) {
       for (const c of convos) {
         const bid = BOTS.find(b => b.supabaseId === c.bot_id);
         if (bid) { stats.perBot[bid.id].conversations++; stats.perBot[bid.id].tokens += c.total_tokens || 0; stats.perBot[bid.id].cost += parseFloat(c.total_cost || 0); }
-        stats.totalTokens += c.total_tokens || 0;
-        stats.totalCost += parseFloat(c.total_cost || 0);
       }
     }
+    // Per-bot: messages from msgs table (NOT added to global total to avoid double-count)
     if (Array.isArray(msgs)) {
       for (const m of msgs) {
         const bid = BOTS.find(b => b.supabaseId === m.bot_id);

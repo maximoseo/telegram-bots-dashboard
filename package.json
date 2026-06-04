@@ -3,5 +3,5 @@
   "version": "1.0.0",
   "description": "Telegram Bots Dashboard — Chat, Projects, Search",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "express": "^4.18.2" }
+  "dependencies": { "express": "^4.21.2", "helmet": "^8.0.0" }
 }
