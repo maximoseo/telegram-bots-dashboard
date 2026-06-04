@@ -482,7 +482,8 @@ async function loadConversation(botId) {
 // ─── Format Message (basic markdown) ──────────────────────────
 function formatMessage(text) {
   if (!text) return '';
-  let s = escapeHtml(text);
+  // Step 1: Process markdown → raw HTML (on plain text, BEFORE any HTML escaping)
+  let s = text;
   // Code blocks
   s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
   // Inline code
@@ -492,10 +493,19 @@ function formatMessage(text) {
   // Italic
   s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
   // Links
-  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--ac2)">$1</a>');
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--ac2)">$1</a>');
   // Line breaks
   s = s.replace(/\n/g, '<br>');
-  return s;
+  // Step 2: Sanitize — strip script tags and event handlers (defense-in-depth)
+  const div = document.createElement('div');
+  div.innerHTML = s;
+  div.querySelectorAll('script').forEach(el => el.remove());
+  div.querySelectorAll('*').forEach(el => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on') || attr.name === 'href' && el.getAttribute('href').toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
+    }
+  });
+  return div.innerHTML;
 }
 
 // ─── Send Message ─────────────────────────────────────────────
