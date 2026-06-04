@@ -161,6 +161,11 @@ app.all('/api/sb/*', async (req, res) => {
   if (!ALLOWED_TABLES.includes(table)) {
     return res.status(403).json({ error: `Forbidden: table '${table}' not in proxy whitelist` });
   }
+  // Require auth for write operations on the proxy
+  if (['POST','PATCH','PUT','DELETE'].includes(req.method)) {
+    const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
+    if (authed !== true) return;
+  }
   const target = `${SB_URL}/rest/v1/${restPath}`;
   const headers = {
     'apikey': SB_KEY,
