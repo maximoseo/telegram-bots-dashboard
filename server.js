@@ -1,11 +1,76 @@
 const express = require('express');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Security headers
 app.use(helmet());
+
+// ─── Dashboard Password Auth ─────────────────────────────
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+const sessions = new Map();
+
+// Rate limiting: global 100 req/min per IP
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(globalLimiter);
+
+// Stricter rate limit for login: 10 req/min
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Try again in a minute.' }
+});
+
+// Stricter rate limit for setup endpoints: 5 req/min
+const setupLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many setup requests. Try again in a minute.' }
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  // If no password configured, dashboard is open (backwards compatible)
+  if (!DASHBOARD_PASSWORD) return next();
+  
+  const token = (req.headers['x-session-id'] || '').trim();
+  const session = sessions.get(token);
+  if (!session) {
+    return res.status(401).json({ error: 'Authentication required. POST /api/login with { password }.' });
+  }
+  next();
+}
+
+app.post('/api/login', loginLimiter, (req, res) => {
+  if (!DASHBOARD_PASSWORD) {
+    return res.json({ ok: true, token: 'no-auth-needed', message: 'No password configured.' });
+  }
+  const { password } = req.body || {};
+  if (password === DASHBOARD_PASSWORD) {
+    const token = crypto.randomBytes(24).toString('hex');
+    sessions.set(token, { created: Date.now() });
+    return res.json({ ok: true, token });
+  }
+  res.status(401).json({ ok: false, error: 'Invalid password.' });
+});
+
+app.get('/api/auth-check', (req, res) => {
+  if (!DASHBOARD_PASSWORD) return res.json({ ok: true, needsAuth: false });
+  const token = (req.headers['x-session-id'] || '').trim();
+  res.json({ ok: sessions.has(token), needsAuth: true });
+});
 
 // Supabase
 const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
@@ -140,7 +205,7 @@ app.get('/api/setup/status', (req, res) => {
   }))});
 });
 
-app.post('/api/setup/token', async (req, res) => {
+app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
   try {
     const { botId, token } = req.body;
     if (!botId || !token) return res.status(400).json({ error: 'botId and token required' });
