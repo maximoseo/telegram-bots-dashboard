@@ -153,7 +153,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Supabase Proxy ──────────────────────────────────────────
 // Table whitelist — only these tables are accessible through the proxy
-const ALLOWED_TABLES = ['messages', 'conversations', 'bot_tokens'];
+const ALLOWED_TABLES = ['messages', 'conversations', 'bot_tokens', 'dashboard_suggestions'];
 
 app.all('/api/sb/*', async (req, res) => {
   const restPath = req.params[0];
