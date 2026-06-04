@@ -12,3 +12,22 @@ services:
         value: https://jzfamdshbfbwolupywrw.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://telegram.org; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://jzfamdshbfbwolupywrw.supabase.co https://api.telegram.org; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=63072000; includeSubDomains; preload"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
