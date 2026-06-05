@@ -185,7 +185,8 @@ app.all('/api/sb/*', async (req, res) => {
     if (cr) res.set('Content-Range', cr);
     try { res.json(JSON.parse(data)); } catch { res.send(data); }
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    console.error('Proxy error:', err.message);
+    res.status(502).json({ error: 'Proxy error' });
   }
 });
 
@@ -226,7 +227,8 @@ app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
     
     res.json({ ok: true, bot: testData.result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Token setup error:', err.message);
+    res.status(500).json({ error: 'Token setup failed' });
   }
 });
 
@@ -352,7 +354,8 @@ app.get('/api/stats', async (req, res) => {
     }
     res.json(stats);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Stats error:', err.message);
+    res.status(500).json({ error: 'Failed to load stats' });
   }
 });
 
@@ -376,7 +379,8 @@ app.get('/api/search', async (req, res) => {
       conversations: Array.isArray(convos) ? convos : []
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Search error:', err.message);
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 
@@ -401,7 +405,8 @@ app.get('/api/export/:botId', async (req, res) => {
       messages: Array.isArray(msgs) ? msgs : []
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Export error:', err.message);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 
