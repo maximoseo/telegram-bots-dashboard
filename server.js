@@ -9,6 +9,16 @@ const PORT = process.env.PORT || 3000;
 // Security headers
 app.use(helmet());
 
+// CORS — allow frontend (same-origin) and external dashboard consumers
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Id');
+  res.set('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // ─── Dashboard Password Auth ─────────────────────────────
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
 const sessions = new Map();
