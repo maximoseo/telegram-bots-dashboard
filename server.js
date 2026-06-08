@@ -213,7 +213,7 @@ async function tgApi(botId, method, body = null) {
 }
 
 // ─── Setup Endpoint ──────────────────────────────────────────
-app.get('/api/setup/status', requireAuth, (req, res) => {
+app.get('/api/setup/status', (req, res) => {
   const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
   res.json({ configured, total: 4, tokensLoaded, bots: BOTS.map(b => ({
     id: b.id, name: b.name, hasToken: !!BOT_TOKENS[b.id]
@@ -303,7 +303,7 @@ app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
 });
 
 // Batch health
-app.get('/api/bots/health', requireAuth, async (req, res) => {
+app.get('/api/bots/health', async (req, res) => {
   const results = {};
   await Promise.allSettled(
     BOTS.map(async (bot) => {
