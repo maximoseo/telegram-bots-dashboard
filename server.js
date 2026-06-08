@@ -20,8 +20,14 @@ app.use((req, res, next) => {
 });
 
 // ─── Dashboard Password Auth ─────────────────────────────
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || crypto.randomBytes(16).toString('hex');
 const sessions = new Map();
+
+// Log auto-generated password so operator can set it via env var for persistence
+if (!process.env.DASHBOARD_PASSWORD) {
+  console.log(`[AUTH] No DASHBOARD_PASSWORD env var set. Auto-generated: ${DASHBOARD_PASSWORD}`);
+  console.log('[AUTH] Set DASHBOARD_PASSWORD environment variable for persistent auth across restarts.');
+}
 
 // Rate limiting: global 100 req/min per IP
 const globalLimiter = rateLimit({
@@ -50,11 +56,8 @@ const setupLimiter = rateLimit({
   message: { error: 'Too many setup requests. Try again in a minute.' }
 });
 
-// Auth middleware
+// Auth middleware — always requires valid session, never falls open
 function requireAuth(req, res, next) {
-  // If no password configured, dashboard is open (backwards compatible)
-  if (!DASHBOARD_PASSWORD) return next();
-  
   const token = (req.headers['x-session-id'] || '').trim();
   const session = sessions.get(token);
   if (!session) {
@@ -64,9 +67,6 @@ function requireAuth(req, res, next) {
 }
 
 app.post('/api/login', loginLimiter, (req, res) => {
-  if (!DASHBOARD_PASSWORD) {
-    return res.json({ ok: true, token: 'no-auth-needed', message: 'No password configured.' });
-  }
   const { password } = req.body || {};
   if (password === DASHBOARD_PASSWORD) {
     const token = crypto.randomBytes(24).toString('hex');
@@ -77,7 +77,6 @@ app.post('/api/login', loginLimiter, (req, res) => {
 });
 
 app.get('/api/auth-check', (req, res) => {
-  if (!DASHBOARD_PASSWORD) return res.json({ ok: true, needsAuth: false });
   const token = (req.headers['x-session-id'] || '').trim();
   res.json({ ok: sessions.has(token), needsAuth: true });
 });
@@ -214,7 +213,7 @@ async function tgApi(botId, method, body = null) {
 }
 
 // ─── Setup Endpoint ──────────────────────────────────────────
-app.get('/api/setup/status', (req, res) => {
+app.get('/api/setup/status', requireAuth, (req, res) => {
   const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
   res.json({ configured, total: 4, tokensLoaded, bots: BOTS.map(b => ({
     id: b.id, name: b.name, hasToken: !!BOT_TOKENS[b.id]
@@ -243,7 +242,7 @@ app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
 });
 
 // ─── Telegram Endpoints ──────────────────────────────────────
-app.get('/api/telegram/:botId/me', async (req, res) => {
+app.get('/api/telegram/:botId/me', requireAuth, async (req, res) => {
   try {
     const info = await tgApi(req.params.botId, 'getMe');
     res.json({ ok: true, result: info });
@@ -252,7 +251,7 @@ app.get('/api/telegram/:botId/me', async (req, res) => {
   }
 });
 
-app.get('/api/telegram/:botId/updates', async (req, res) => {
+app.get('/api/telegram/:botId/updates', requireAuth, async (req, res) => {
   try {
     const offset = req.query.offset || 0;
     const limit = parseInt(req.query.limit) || 50;
@@ -265,7 +264,7 @@ app.get('/api/telegram/:botId/updates', async (req, res) => {
   }
 });
 
-app.post('/api/telegram/:botId/send', async (req, res) => {
+app.post('/api/telegram/:botId/send', requireAuth, async (req, res) => {
   try {
     const { chatId, text, parseMode } = req.body;
     if (!chatId || !text) return res.status(400).json({ error: 'chatId and text required' });
@@ -278,7 +277,7 @@ app.post('/api/telegram/:botId/send', async (req, res) => {
   }
 });
 
-app.get('/api/telegram/:botId/chats', async (req, res) => {
+app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
   try {
     const updates = await tgApi(req.params.botId, 'getUpdates', { limit: 100 });
     const chats = {};
@@ -304,7 +303,7 @@ app.get('/api/telegram/:botId/chats', async (req, res) => {
 });
 
 // Batch health
-app.get('/api/bots/health', async (req, res) => {
+app.get('/api/bots/health', requireAuth, async (req, res) => {
   const results = {};
   await Promise.allSettled(
     BOTS.map(async (bot) => {
@@ -325,7 +324,7 @@ app.get('/api/bots/health', async (req, res) => {
 });
 
 // ─── Stats ───────────────────────────────────────────────────
-app.get('/api/stats', async (req, res) => {
+app.get('/api/stats', requireAuth, async (req, res) => {
   try {
     const [convosResp, msgsResp] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/conversations?select=id,bot_id,message_count,total_tokens,total_cost,created_at`, {
@@ -370,7 +369,7 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // ─── Search ──────────────────────────────────────────────────
-app.get('/api/search', async (req, res) => {
+app.get('/api/search', requireAuth, async (req, res) => {
   try {
     const q = req.query.q;
     if (!q) return res.json({ messages: [], conversations: [] });
@@ -395,7 +394,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ─── Export ──────────────────────────────────────────────────
-app.get('/api/export/:botId', async (req, res) => {
+app.get('/api/export/:botId', requireAuth, async (req, res) => {
   try {
     const bot = BOTS.find(b => b.id === req.params.botId);
     if (!bot) return res.status(400).json({ error: 'Invalid bot' });
