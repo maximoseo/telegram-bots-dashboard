@@ -89,7 +89,7 @@ app.get('/api/auth-check', (req, res) => {
 });
 
 // Supabase
-const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
+const SB_URL = process.env.SUPABASE_URL || 'https://sunrupuwvpalipiuebcv.supabase.co';
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // AbortController wrapper — prevents hung fetch calls from exhausting the connection pool
