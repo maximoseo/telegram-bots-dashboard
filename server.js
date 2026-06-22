@@ -88,6 +88,13 @@ app.get('/api/auth-check', (req, res) => {
 const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+// AbortController wrapper — prevents hung fetch calls from exhausting the connection pool
+function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 // Bot tokens — loaded from Supabase on startup, updated via /api/setup
 let BOT_TOKENS = Object.create(null);
 BOT_TOKENS.nous = '';
@@ -121,7 +128,7 @@ function loadTokensFromEnv() {
 // ─── Load tokens from Supabase (primary source) ───────────────
 async function loadTokensFromDB() {
   try {
-    const resp = await fetch(`${SB_URL}/rest/v1/bot_tokens?select=*`, {
+    const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens?select=*`, {
       headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
     });
     if (!resp.ok) return;
@@ -145,7 +152,7 @@ async function loadTokensFromDB() {
 // ─── Save token to Supabase ───────────────────────────────────
 async function saveTokenToDB(botId, token) {
   try {
-    await fetch(`${SB_URL}/rest/v1/bot_tokens`, {
+    await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
       method: 'POST',
       headers: {
         'apikey': SB_KEY,
@@ -189,7 +196,7 @@ app.all('/api/sb/*', async (req, res) => {
   try {
     const opts = { method: req.method, headers };
     if (['POST','PATCH','PUT'].includes(req.method) && req.body) opts.body = JSON.stringify(req.body);
-    const resp = await fetch(url, opts);
+    const resp = await fetchWithTimeout(url, opts);
     const data = await resp.text();
     res.status(resp.status);
     const cr = resp.headers.get('content-range');
@@ -329,10 +336,10 @@ app.get('/api/bots/health', async (req, res) => {
 app.get('/api/stats', requireAuth, async (req, res) => {
   try {
     const [convosResp, msgsResp] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/conversations?select=id,bot_id,message_count,total_tokens,total_cost,created_at`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/conversations?select=id,bot_id,message_count,total_tokens,total_cost,created_at`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       }),
-      fetch(`${SB_URL}/rest/v1/messages?select=id,bot_id,tokens_used,cost,created_at`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/messages?select=id,bot_id,tokens_used,cost,created_at`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       })
     ]);
@@ -376,10 +383,10 @@ app.get('/api/search', requireAuth, async (req, res) => {
     const q = req.query.q;
     if (!q) return res.json({ messages: [], conversations: [] });
     const [msgsResp, convosResp] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/messages?content=ilike.%25${encodeURIComponent(q)}%25&order=created_at.desc&limit=50`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/messages?content=ilike.%25${encodeURIComponent(q)}%25&order=created_at.desc&limit=50`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       }),
-      fetch(`${SB_URL}/rest/v1/conversations?or=(username.ilike.%25${encodeURIComponent(q)}%25,telegram_user_id.ilike.%25${encodeURIComponent(q)}%25)&order=updated_at.desc&limit=50`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/conversations?or=(username.ilike.%25${encodeURIComponent(q)}%25,telegram_user_id.ilike.%25${encodeURIComponent(q)}%25)&order=updated_at.desc&limit=50`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       })
     ]);
@@ -401,10 +408,10 @@ app.get('/api/export/:botId', requireAuth, async (req, res) => {
     const bot = BOTS.find(b => b.id === req.params.botId);
     if (!bot) return res.status(400).json({ error: 'Invalid bot' });
     const [msgsResp, convosResp] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/messages?bot_id=eq.${bot.supabaseId}&order=created_at.asc&limit=1000`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/messages?bot_id=eq.${bot.supabaseId}&order=created_at.asc&limit=1000`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       }),
-      fetch(`${SB_URL}/rest/v1/conversations?bot_id=eq.${bot.supabaseId}&order=updated_at.desc&limit=100`, {
+      fetchWithTimeout(`${SB_URL}/rest/v1/conversations?bot_id=eq.${bot.supabaseId}&order=updated_at.desc&limit=100`, {
         headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
       })
     ]);
