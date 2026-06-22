@@ -435,12 +435,19 @@ app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime()
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Startup ─────────────────────────────────────────────────
-// Primary source: Supabase bot_tokens table. Backup: environment variables.
-loadTokensFromDB().then(() => {
-  loadTokensFromEnv();  // fill any remaining gaps from env vars
-  app.listen(PORT, '0.0.0.0', () => {
-    tokensLoaded = true;
-    const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
-    console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens configured)`);
-  });
+// Start server immediately — Render health checks need a fast listen().
+// Token loading happens in background so a slow/hung Supabase never blocks startup.
+app.listen(PORT, '0.0.0.0', () => {
+  const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
+  console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens pre-configured)`);
+  tokensLoaded = true;
 });
+
+// Background: load tokens from Supabase, then fill gaps from env vars
+loadTokensFromDB()
+  .catch(err => console.error('❌ loadTokensFromDB failed:', err.message))
+  .finally(() => {
+    loadTokensFromEnv();
+    const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
+    console.log(`🔑 Tokens after background load: ${configured}/4`);
+  });
