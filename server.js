@@ -39,6 +39,9 @@ const globalLimiter = rateLimit({
 app.use(globalLimiter);
 app.use(express.json({ limit: '1mb' }));
 
+// Body parser — MUST be registered before any route that reads req.body
+app.use(express.json({ limit: '1mb' }));
+
 // Stricter rate limit for login: 10 req/min
 const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -180,10 +183,13 @@ app.all('/api/sb/*', async (req, res) => {
   if (!ALLOWED_TABLES.includes(table)) {
     return res.status(403).json({ error: `Forbidden: table '${table}' not in proxy whitelist` });
   }
-  // Require auth for write operations on the proxy
-  if (['POST','PATCH','PUT','DELETE'].includes(req.method)) {
-    const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
-    if (authed !== true) return;
+  // Require auth for ALL proxy operations (reads also expose sensitive data)
+  const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
+  if (authed !== true) return;
+  
+  // Additional check: POST/PATCH/PUT require body validation
+  if (['POST','PATCH','PUT'].includes(req.method) && !req.body) {
+    return res.status(400).json({ error: 'Request body required for write operations' });
   }
   const target = `${SB_URL}/rest/v1/${restPath}`;
   const headers = {
