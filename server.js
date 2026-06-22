@@ -37,6 +37,7 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(globalLimiter);
+app.use(express.json({ limit: '1mb' }));
 
 // Stricter rate limit for login: 10 req/min
 const loginLimiter = rateLimit({
