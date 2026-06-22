@@ -2,6 +2,7 @@ const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,9 +20,50 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Dashboard Password Auth ─────────────────────────────
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || crypto.randomBytes(16).toString('hex');
+// ─── Session Persistence ─────────────────────────────────
+// File-backed session store survives server restarts within the same deploy.
+// Cold deploys (new Render deploy) lose sessions — same as current behavior.
+const SESSION_FILE = process.env.SESSION_FILE || '/tmp/tgb-sessions.json';
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h expiry
 const sessions = new Map();
+
+function saveSessions() {
+  try {
+    const obj = Object.fromEntries(sessions);
+    const tmp = SESSION_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(obj));
+    fs.renameSync(tmp, SESSION_FILE);
+  } catch (e) {
+    console.error('[SESSION] Failed to save sessions:', e.message);
+  }
+}
+
+function loadSessions() {
+  try {
+    if (!fs.existsSync(SESSION_FILE)) return 0;
+    const raw = fs.readFileSync(SESSION_FILE, 'utf8');
+    const obj = JSON.parse(raw);
+    const now = Date.now();
+    let loaded = 0, expired = 0;
+    for (const [token, data] of Object.entries(obj)) {
+      if (data.created && (now - data.created) < SESSION_TTL_MS) {
+        sessions.set(token, data);
+        loaded++;
+      } else {
+        expired++;
+      }
+    }
+    if (expired > 0) saveSessions(); // prune expired
+    console.log(`[SESSION] Hydrated ${loaded} session(s) from disk${expired > 0 ? ` (${expired} expired pruned)` : ''}`);
+    return loaded;
+  } catch (e) {
+    console.error('[SESSION] Failed to load sessions:', e.message);
+    return 0;
+  }
+}
+
+// Dashboard password — set via env var for persistence across cold deploys
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || crypto.randomBytes(16).toString('hex');
 
 // Log auto-generated password so operator can set it via env var for persistence
 if (!process.env.DASHBOARD_PASSWORD) {
@@ -74,6 +116,7 @@ app.post('/api/login', loginLimiter, (req, res) => {
   if (password === DASHBOARD_PASSWORD) {
     const token = crypto.randomBytes(24).toString('hex');
     sessions.set(token, { created: Date.now() });
+    saveSessions();  // persist across restarts
     return res.json({ ok: true, token });
   }
   res.status(401).json({ ok: false, error: 'Invalid password.' });
@@ -436,6 +479,7 @@ app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html
 
 // ─── Startup ─────────────────────────────────────────────────
 // Primary source: Supabase bot_tokens table. Backup: environment variables.
+loadSessions();  // hydrate persisted sessions before server starts
 loadTokensFromDB().then(() => {
   loadTokensFromEnv();  // fill any remaining gaps from env vars
   app.listen(PORT, '0.0.0.0', () => {
