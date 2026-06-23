@@ -522,7 +522,7 @@ async function sendMessage() {
   
   // Store in Supabase
   try {
-    await fetch('/api/sb/messages', {
+    const storeResp = await fetch('/api/sb/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -534,6 +534,9 @@ async function sendMessage() {
         created_at: new Date().toISOString()
       })
     });
+    if (!storeResp.ok) {
+      console.error('Store error:', storeResp.status, await storeResp.text().catch(() => ''));
+    }
   } catch (e) {
     console.error('Store error:', e);
   }
@@ -545,6 +548,9 @@ async function sendMessage() {
   try {
     // First, get available chats for this bot
     const chatsResp = await fetch(`/api/telegram/${activeBot.id}/chats`);
+    if (!chatsResp.ok) {
+      throw new Error(`Chats fetch failed: ${chatsResp.status}`);
+    }
     const chatsData = await chatsResp.json();
     
     if (chatsData.ok && chatsData.chats && chatsData.chats.length > 0) {
@@ -556,6 +562,9 @@ async function sendMessage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId, text })
       });
+      if (!sendResp.ok) {
+        throw new Error(`Send fetch failed: ${sendResp.status}`);
+      }
       const sendData = await sendResp.json();
       
       hideTyping();
@@ -574,6 +583,9 @@ async function sendMessage() {
       
       // Still try to get recent updates
       const updatesResp = await fetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
+      if (!updatesResp.ok) {
+        throw new Error(`Updates fetch failed: ${updatesResp.status}`);
+      }
       const updatesData = await updatesResp.json();
       if (updatesData.ok && updatesData.result && updatesData.result.length > 0) {
         addMessage('system', `📬 Found ${updatesData.result.length} recent messages. Latest from: ${updatesData.result[updatesData.result.length-1]?.message?.chat?.username || 'unknown'}`);
