@@ -319,7 +319,7 @@ app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
 });
 
 // Batch health
-app.get('/api/bots/health', async (req, res) => {
+app.get('/api/bots/health', requireAuth, async (req, res) => {
   const results = {};
   await Promise.allSettled(
     BOTS.map(async (bot) => {
