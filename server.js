@@ -79,6 +79,10 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(globalLimiter);
+app.use(express.json({ limit: '1mb' }));
+
+// Body parser — MUST be registered before any route that reads req.body
+app.use(express.json({ limit: '1mb' }));
 
 // Stricter rate limit for login: 10 req/min
 const loginLimiter = rateLimit({
@@ -128,7 +132,7 @@ app.get('/api/auth-check', (req, res) => {
 });
 
 // Supabase
-const SB_URL = process.env.SUPABASE_URL || 'https://jzfamdshbfbwolupywrw.supabase.co';
+const SB_URL = process.env.SUPABASE_URL || 'https://sunrupuwvpalipiuebcv.supabase.co';
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // AbortController wrapper — prevents hung fetch calls from exhausting the connection pool
@@ -222,10 +226,13 @@ app.all('/api/sb/*', async (req, res) => {
   if (!ALLOWED_TABLES.includes(table)) {
     return res.status(403).json({ error: `Forbidden: table '${table}' not in proxy whitelist` });
   }
-  // Require auth for write operations on the proxy
-  if (['POST','PATCH','PUT','DELETE'].includes(req.method)) {
-    const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
-    if (authed !== true) return;
+  // Require auth for ALL proxy operations (reads also expose sensitive data)
+  const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
+  if (authed !== true) return;
+  
+  // Additional check: POST/PATCH/PUT require body validation
+  if (['POST','PATCH','PUT'].includes(req.method) && !req.body) {
+    return res.status(400).json({ error: 'Request body required for write operations' });
   }
   const target = `${SB_URL}/rest/v1/${restPath}`;
   const headers = {
@@ -355,7 +362,7 @@ app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
 });
 
 // Batch health
-app.get('/api/bots/health', async (req, res) => {
+app.get('/api/bots/health', requireAuth, async (req, res) => {
   const results = {};
   await Promise.allSettled(
     BOTS.map(async (bot) => {
@@ -478,13 +485,22 @@ app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime()
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Startup ─────────────────────────────────────────────────
-// Primary source: Supabase bot_tokens table. Backup: environment variables.
-loadSessions();  // hydrate persisted sessions before server starts
-loadTokensFromDB().then(() => {
-  loadTokensFromEnv();  // fill any remaining gaps from env vars
-  app.listen(PORT, '0.0.0.0', () => {
-    tokensLoaded = true;
-    const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
-    console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens configured)`);
-  });
+// Hydrate persisted sessions before server starts
+loadSessions();
+
+// Start server immediately — Render health checks need a fast listen().
+// Token loading happens in background so a slow/hung Supabase never blocks startup.
+app.listen(PORT, '0.0.0.0', () => {
+  const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
+  console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens pre-configured)`);
+  tokensLoaded = true;
 });
+
+// Background: load tokens from Supabase, then fill gaps from env vars
+loadTokensFromDB()
+  .catch(err => console.error('❌ loadTokensFromDB failed:', err.message))
+  .finally(() => {
+    loadTokensFromEnv();
+    const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
+    console.log(`🔑 Tokens after background load: ${configured}/4`);
+  });
