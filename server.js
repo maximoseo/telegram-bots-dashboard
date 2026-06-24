@@ -109,6 +109,12 @@ function requireAuth(req, res, next) {
   if (!session) {
     return res.status(401).json({ error: 'Authentication required. POST /api/login with { password }.' });
   }
+  // Check session TTL — reject expired tokens
+  if (Date.now() - session.created >= SESSION_TTL_MS) {
+    sessions.delete(token);
+    saveSessions();
+    return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  }
   next();
 }
 
@@ -128,7 +134,15 @@ app.post('/api/login', loginLimiter, (req, res) => {
 
 app.get('/api/auth-check', (req, res) => {
   const token = (req.headers['x-session-id'] || '').trim();
-  res.json({ ok: sessions.has(token), needsAuth: true });
+  const session = sessions.get(token);
+  if (!session) return res.json({ ok: false, needsAuth: true });
+  // Reject expired sessions
+  if (Date.now() - session.created >= SESSION_TTL_MS) {
+    sessions.delete(token);
+    saveSessions();
+    return res.json({ ok: false, needsAuth: true });
+  }
+  res.json({ ok: true, needsAuth: true });
 });
 
 // Supabase
@@ -487,6 +501,23 @@ app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html
 // ─── Startup ─────────────────────────────────────────────────
 // Hydrate persisted sessions before server starts
 loadSessions();
+
+// Periodic session cleanup — prune expired entries every hour to prevent unbounded memory growth
+// Addresses MAX-578: Session Map grows unboundedly with no expiry or cleanup
+setInterval(() => {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [token, sess] of sessions) {
+    if (now - sess.created >= SESSION_TTL_MS) {
+      sessions.delete(token);
+      pruned++;
+    }
+  }
+  if (pruned > 0) {
+    saveSessions();
+    console.log(`[SESSION] Pruned ${pruned} expired session(s). Active: ${sessions.size}`);
+  }
+}, 60 * 60 * 1000); // every hour
 
 // Start server immediately — Render health checks need a fast listen().
 // Token loading happens in background so a slow/hung Supabase never blocks startup.
