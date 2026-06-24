@@ -20,6 +20,36 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── CSRF Protection ─────────────────────────────────────
+// Validates Origin/Referer headers on mutation endpoints.
+// Pattern copied from PCC (Run 1072) and GBP (PR #27).
+function validateCSRF(req) {
+  // Check Origin first (most reliable)
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      if (u.host !== req.hostname) return { valid: false, error: 'Origin mismatch — possible CSRF attack' };
+    } catch {
+      return { valid: false, error: 'Invalid Origin header' };
+    }
+    return { valid: true };
+  }
+  // Fallback to Referer
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      if (u.host !== req.hostname) return { valid: false, error: 'Referer mismatch — possible CSRF attack' };
+    } catch {
+      return { valid: false, error: 'Invalid Referer header' };
+    }
+    return { valid: true };
+  }
+  // Neither present — reject cross-origin mutations
+  return { valid: false, error: 'Missing Origin and Referer headers — possible CSRF attack' };
+}
+
 // ─── Session Persistence ─────────────────────────────────
 // File-backed session store survives server restarts within the same deploy.
 // Cold deploys (new Render deploy) lose sessions — same as current behavior.
@@ -122,6 +152,8 @@ function requireAuth(req, res, next) {
 app.use(express.json({ limit: '1mb' }));
 
 app.post('/api/login', loginLimiter, (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
   const { password } = req.body || {};
   if (password === DASHBOARD_PASSWORD) {
     const token = crypto.randomBytes(24).toString('hex');
@@ -294,6 +326,8 @@ app.get('/api/setup/status', (req, res) => {
 });
 
 app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
   try {
     const { botId, token } = req.body;
     if (!botId || !token) return res.status(400).json({ error: 'botId and token required' });
@@ -338,6 +372,8 @@ app.get('/api/telegram/:botId/updates', requireAuth, async (req, res) => {
 });
 
 app.post('/api/telegram/:botId/send', requireAuth, async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
   try {
     const { chatId, text, parseMode } = req.body;
     if (!chatId || !text) return res.status(400).json({ error: 'chatId and text required' });
