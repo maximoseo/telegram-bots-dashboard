@@ -22,27 +22,33 @@ app.use((req, res, next) => {
 
 // ─── CSRF Protection ─────────────────────────────────────
 // Validates Origin/Referer headers on mutation endpoints.
-// Pattern copied from PCC (Run 1072) and GBP (PR #27).
+// Compare against the full Host header (including port) so same-origin
+// localhost/Render requests are not rejected as false positives.
+function isSameRequestHost(req, candidateUrl) {
+  const expectedHost = (req.get('host') || '').toLowerCase();
+  if (!expectedHost) return false;
+  try {
+    const parsed = new URL(candidateUrl);
+    return parsed.host.toLowerCase() === expectedHost;
+  } catch {
+    return false;
+  }
+}
+
 function validateCSRF(req) {
   // Check Origin first (most reliable)
   const origin = req.headers.origin;
   if (origin) {
-    try {
-      const u = new URL(origin);
-      if (u.host !== req.hostname) return { valid: false, error: 'Origin mismatch — possible CSRF attack' };
-    } catch {
-      return { valid: false, error: 'Invalid Origin header' };
+    if (!isSameRequestHost(req, origin)) {
+      return { valid: false, error: 'Origin mismatch — possible CSRF attack' };
     }
     return { valid: true };
   }
   // Fallback to Referer
   const referer = req.headers.referer;
   if (referer) {
-    try {
-      const u = new URL(referer);
-      if (u.host !== req.hostname) return { valid: false, error: 'Referer mismatch — possible CSRF attack' };
-    } catch {
-      return { valid: false, error: 'Invalid Referer header' };
+    if (!isSameRequestHost(req, referer)) {
+      return { valid: false, error: 'Referer mismatch — possible CSRF attack' };
     }
     return { valid: true };
   }
@@ -109,9 +115,10 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(globalLimiter);
-app.use(express.json({ limit: '1mb' }));
 
-// Body parser — MUST be registered before any route that reads req.body
+// Body parser — MUST be registered before any route that reads req.body.
+// Keep this as a single registration; duplicate JSON parsers add noise and
+// can hide route-order regressions during audits.
 app.use(express.json({ limit: '1mb' }));
 
 // Stricter rate limit for login: 10 req/min
@@ -147,9 +154,6 @@ function requireAuth(req, res, next) {
   }
   next();
 }
-
-// Body parser must be registered BEFORE any route that reads req.body
-app.use(express.json({ limit: '1mb' }));
 
 app.post('/api/login', loginLimiter, (req, res) => {
   const csrf = validateCSRF(req);

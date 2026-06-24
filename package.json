@@ -2,6 +2,13 @@
   "name": "telegram-bots-dashboard",
   "version": "1.0.0",
   "description": "Telegram Bots Dashboard — Chat, Projects, Search",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "express": "^4.21.2", "helmet": "^8.0.0", "express-rate-limit": "^7.5.0" }
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.5.0"
+  }
 }
