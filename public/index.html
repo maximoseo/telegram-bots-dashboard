@@ -91,6 +91,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 .chat-input button:disabled{opacity:.5;cursor:default}
 .chat-input .send-icon{display:none}
 
+/* Chat Picker */
+.chat-picker-wrapper{padding:8px 16px 0;background:var(--s1)}
+.chat-picker-wrapper select{width:100%;background:var(--bg);border:1px solid var(--b1);border-radius:var(--rs);padding:8px 10px;color:var(--t1);font-size:11px;font-family:inherit;cursor:pointer;transition:border-color .2s;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%2364748b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+.chat-picker-wrapper select:focus{outline:none;border-color:var(--ac)}
+.chat-picker-wrapper select:disabled{opacity:.5;cursor:default}
+.chat-picker-wrapper select option{background:var(--s2);color:var(--t1)}
+.chat-picker-wrapper .chat-picker-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);margin-bottom:4px;display:block}
+
 /* Right Panel */
 .right-panel{background:var(--s1);border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto}
 .right-panel .tabs{display:flex;border-bottom:1px solid var(--b1)}
@@ -208,6 +216,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
   .msg .time{font-size:10px}
 
   /* Chat input pinned at bottom of chat panel */
+  .chat-picker-wrapper{padding:8px 12px 0}
+  .chat-picker-wrapper select{font-size:14px;padding:10px 12px;min-height:44px}
   .chat-input{padding:10px 12px;gap:10px}
   .chat-input input{font-size:16px;padding:12px 14px}
   .chat-input button{padding:12px 18px;font-size:15px;min-height:48px}
@@ -278,6 +288,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
     </div>
     <div class="chat-messages" id="chatMessages">
       <div class="empty"><div class="icon">💬</div><p>Select a bot to view conversation history</p></div>
+    </div>
+    <div class="chat-picker-wrapper" id="chatPickerWrapper" style="display:none">
+      <span class="chat-picker-label">Send to chat</span>
+      <select id="chatPicker" disabled onchange="onChatPickerChange()">
+        <option value="">Loading chats...</option>
+      </select>
     </div>
     <div class="chat-input">
       <input type="text" id="chatInput" placeholder="Type a message... (Enter to send)" disabled>
@@ -372,6 +388,7 @@ const BOTS = [
 ];
 
 let activeBot = null;
+let activeChat = null;
 let conversations = [];
 let projects = [];
 let botHealth = {};
@@ -444,11 +461,55 @@ async function selectBot(id) {
   document.getElementById('chatInput').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   
+  // Load chat picker for this bot
+  await loadChatPicker(id);
+  
   // On mobile, jump to the Chat tab so the selected bot's conversation is visible
   if (mobileReady && isMobile()) switchMobileTab('chat');
 
   await loadConversation(id);
   await loadProjects(id);
+}
+
+// ─── Load Chat Picker ─────────────────────────────────────────
+async function loadChatPicker(botId) {
+  const wrapper = document.getElementById('chatPickerWrapper');
+  const picker = document.getElementById('chatPicker');
+  activeChat = null;
+  
+  try {
+    const resp = await fetch(`/api/telegram/${botId}/chats`);
+    if (!resp.ok) throw new Error(`Chats fetch failed: ${resp.status}`);
+    const data = await resp.json();
+    
+    if (data.ok && data.chats && data.chats.length > 0) {
+      wrapper.style.display = 'block';
+      picker.disabled = false;
+      picker.innerHTML = data.chats.map((c, i) => {
+        const label = c.username ? `@${c.username}` : (c.title || c.first_name || `Chat ${c.id}`.substring(0, 10));
+        const type = c.type === 'group' ? '👥' : c.type === 'supergroup' ? '👥' : '👤';
+        return `<option value="${c.id}" data-username="${c.username || ''}">${type} ${label}</option>`;
+      }).join('');
+      
+      // Default to first chat
+      activeChat = data.chats[0].id;
+      picker.value = activeChat;
+    } else {
+      wrapper.style.display = 'none';
+      picker.disabled = true;
+      activeChat = null;
+    }
+  } catch (e) {
+    console.error('loadChatPicker error:', e);
+    wrapper.style.display = 'none';
+    picker.disabled = true;
+    activeChat = null;
+  }
+}
+
+// ─── Chat Picker Change ────────────────────────────────────────
+function onChatPickerChange() {
+  activeChat = document.getElementById('chatPicker').value;
 }
 
 // ─── Load Conversation ────────────────────────────────────────
@@ -546,50 +607,44 @@ async function sendMessage() {
   
   // Try to send via Telegram and get response
   try {
-    // First, get available chats for this bot
-    const chatsResp = await fetch(`/api/telegram/${activeBot.id}/chats`);
-    if (!chatsResp.ok) {
-      throw new Error(`Chats fetch failed: ${chatsResp.status}`);
-    }
-    const chatsData = await chatsResp.json();
+    // Use selected chat from picker, or resolve if needed
+    let chatId = activeChat;
     
-    if (chatsData.ok && chatsData.chats && chatsData.chats.length > 0) {
-      // Send to the most recent chat
-      const chatId = chatsData.chats[0].id;
-      
-      const sendResp = await fetch(`/api/telegram/${activeBot.id}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, text })
-      });
-      if (!sendResp.ok) {
-        throw new Error(`Send fetch failed: ${sendResp.status}`);
-      }
-      const sendData = await sendResp.json();
-      
-      hideTyping();
-      
-      if (sendData.ok) {
-        addMessage('system', `✅ Message sent via Telegram to ${chatsData.chats[0].username || chatId}`);
-        // Poll for bot response
-        await pollBotResponse(activeBot.id, chatId);
+    if (!chatId) {
+      // Fallback: fetch chats and use first
+      const chatsResp = await fetch(`/api/telegram/${activeBot.id}/chats`);
+      if (!chatsResp.ok) throw new Error(`Chats fetch failed: ${chatsResp.status}`);
+      const chatsData = await chatsResp.json();
+      if (chatsData.ok && chatsData.chats && chatsData.chats.length > 0) {
+        chatId = chatsData.chats[0].id;
       } else {
-        addMessage('error', `❌ Telegram error: ${sendData.error}`);
+        throw new Error('No Telegram chats available');
       }
+    }
+    
+    // Find selected chat info for the confirmation message
+    const picker = document.getElementById('chatPicker');
+    const selectedOption = picker.options[picker.selectedIndex];
+    const chatLabel = selectedOption ? selectedOption.textContent.trim() : chatId;
+    
+    const sendResp = await fetch(`/api/telegram/${activeBot.id}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, text })
+    });
+    if (!sendResp.ok) {
+      throw new Error(`Send fetch failed: ${sendResp.status}`);
+    }
+    const sendData = await sendResp.json();
+    
+    hideTyping();
+    
+    if (sendData.ok) {
+      addMessage('system', `✅ Message sent via Telegram to ${chatLabel}`);
+      // Poll for bot response
+      await pollBotResponse(activeBot.id, chatId);
     } else {
-      hideTyping();
-      // No chats available — try getUpdates to check
-      addMessage('system', `ℹ️ No active Telegram chats found for ${activeBot.name}. Start a conversation on Telegram first: ${activeBot.username}`);
-      
-      // Still try to get recent updates
-      const updatesResp = await fetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
-      if (!updatesResp.ok) {
-        throw new Error(`Updates fetch failed: ${updatesResp.status}`);
-      }
-      const updatesData = await updatesResp.json();
-      if (updatesData.ok && updatesData.result && updatesData.result.length > 0) {
-        addMessage('system', `📬 Found ${updatesData.result.length} recent messages. Latest from: ${updatesData.result[updatesData.result.length-1]?.message?.chat?.username || 'unknown'}`);
-      }
+      addMessage('error', `❌ Telegram error: ${sendData.error}`);
     }
   } catch (e) {
     hideTyping();
