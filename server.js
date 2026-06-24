@@ -354,7 +354,8 @@ app.get('/api/telegram/:botId/me', requireAuth, async (req, res) => {
     const info = await tgApi(req.params.botId, 'getMe');
     res.json({ ok: true, result: info });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    console.error('getMe error:', err.message);
+    res.json({ ok: false, error: 'Telegram API request failed' });
   }
 });
 
@@ -367,7 +368,8 @@ app.get('/api/telegram/:botId/updates', requireAuth, async (req, res) => {
     });
     res.json({ ok: true, result: updates });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    console.error('getUpdates error:', err.message);
+    res.json({ ok: false, error: 'Telegram API request failed' });
   }
 });
 
@@ -382,7 +384,8 @@ app.post('/api/telegram/:botId/send', requireAuth, async (req, res) => {
     });
     res.json({ ok: true, result });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    console.error('sendMessage error:', err.message);
+    res.json({ ok: false, error: 'Telegram API request failed' });
   }
 });
 
@@ -407,7 +410,8 @@ app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
     }
     res.json({ ok: true, chats: Object.values(chats) });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    console.error('getChats error:', err.message);
+    res.json({ ok: false, error: 'Telegram API request failed' });
   }
 });
 
@@ -425,7 +429,8 @@ app.get('/api/bots/health', requireAuth, async (req, res) => {
         const info = await tgApi(bot.id, 'getMe');
         results[bot.id] = { online: true, latency: Date.now() - start, username: info.username, firstName: info.first_name };
       } catch (err) {
-        results[bot.id] = { online: false, error: err.message };
+        console.error('Health check error for', bot.id, ':', err.message);
+        results[bot.id] = { online: false, error: 'Health check failed' };
       }
     })
   );
