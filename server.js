@@ -698,11 +698,11 @@ app.get('/api/telegram/:botId/chats', async (req, res) => {
   if (!bot || !BOT_TOKENS[req.params.botId]) return res.status(404).json({ ok: false, error: 'Bot not configured' });
   try {
     const storedChats = await listStoredTelegramChats(bot);
-    if (storedChats.length > 0) return res.json({ ok: true, chats: storedChats, source: 'supabase' });
+    if (SB_KEY) return res.json({ ok: true, chats: storedChats, source: 'supabase' });
 
-    // Fallback for bots without webhooks. When a webhook is active, Telegram's
-    // getUpdates is expected to be empty or unavailable; persisted webhook
-    // conversations above are the source of truth for dashboard send targets.
+    // Fallback for local/dev bots without Supabase persistence. In production
+    // webhook-delivered conversations above are the source of truth; Telegram
+    // getUpdates is not compatible with an active webhook.
     const updates = await tgApi(req.params.botId, 'getUpdates', { limit: 100 });
     const chats = {};
     for (const u of updates) {
