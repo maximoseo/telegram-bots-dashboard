@@ -116,6 +116,7 @@ const DEFAULT_BOTS = [
 ];
 
 const CUSTOM_BOTS_FILE = process.env.CUSTOM_BOTS_FILE || path.join('/tmp', 'tgb-custom-bots.json');
+const BOT_CONFIG_ROW_ID = '__dashboard_bot_config__';
 let botConfig = { customBots: [], hiddenDefaultIds: [] };
 let BOTS = [];
 
@@ -148,6 +149,7 @@ function saveBotConfig() {
   fs.mkdirSync(path.dirname(CUSTOM_BOTS_FILE), { recursive: true });
   fs.writeFileSync(CUSTOM_BOTS_FILE, JSON.stringify(botConfig, null, 2));
   rebuildBots();
+  saveBotConfigToDB().catch(e => console.error('[BOTS] Failed to persist bot config:', e.message));
 }
 function fsExists(file) { try { return require('fs').existsSync(file); } catch { return false; } }
 function publicBot(bot) {
@@ -182,6 +184,20 @@ async function loadTokensFromDB() {
 
     let filled = 0;
     for (const row of rows) {
+      if (row.bot_id === BOT_CONFIG_ROW_ID && row.token) {
+        try {
+          const parsed = JSON.parse(row.token);
+          botConfig = {
+            customBots: Array.isArray(parsed.customBots) ? parsed.customBots : [],
+            hiddenDefaultIds: Array.isArray(parsed.hiddenDefaultIds) ? parsed.hiddenDefaultIds : []
+          };
+          rebuildBots();
+          console.log(`✅ Bot config from Supabase: ${botConfig.customBots.length} custom, ${botConfig.hiddenDefaultIds.length} hidden default(s)`);
+        } catch (e) {
+          console.error('[BOTS] Failed to parse Supabase bot config:', e.message);
+        }
+        continue;
+      }
       if (row.bot_id && row.token && row.token.length > 20) {
         BOT_TOKENS[row.bot_id] = row.token;
         filled++;
@@ -192,6 +208,20 @@ async function loadTokensFromDB() {
   } catch (e) {
     console.log('⚠️ Could not load tokens from DB:', e.message);
   }
+}
+
+async function saveBotConfigToDB() {
+  if (!SB_KEY) return;
+  await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': `Bearer ${SB_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    },
+    body: JSON.stringify({ bot_id: BOT_CONFIG_ROW_ID, token: JSON.stringify(botConfig), updated_at: new Date().toISOString() })
+  });
 }
 
 // ─── Save token to Supabase ───────────────────────────────────
