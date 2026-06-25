@@ -22,6 +22,12 @@ services:
         sync: false
       - key: BOT_TOKEN_CODEX
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CHAT_MODEL
+        value: gpt-4o-mini
     headers:
       - path: /*
         name: Content-Security-Policy

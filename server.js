@@ -363,36 +363,140 @@ function chatLabel(chat = {}) {
   return chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' ') || String(chat.id || 'Telegram user');
 }
 
-function buildDashboardChatReply(bot, text) {
+function buildFallbackChatReply(bot, text) {
   const normalized = String(text || '').trim();
   const lower = normalized.toLowerCase();
-  const intro = `${bot.name} is online in dashboard chat mode.`;
-  const capabilities = [
-    'I can receive messages here even before a Telegram user starts a chat with the bot.',
-    'Telegram delivery still needs at least one real Telegram conversation for that bot.',
-    'Messages are saved to the dashboard conversation history when persistence is configured.'
-  ];
+  const isHebrew = /[\u0590-\u05ff]/.test(normalized);
+
+  if (lower.includes('status') || lower.includes('סטטוס') || lower.includes('עובד')) {
+    return isHebrew
+      ? `אני פעיל וזמין כאן בצ׳אט.\n\nאפשר לכתוב לי שאלה או משימה, ואני אענה בצורה שיחתית וברורה. אם תרצה שאבצע פעולה חיצונית בפועל, צריך לחבר את הצ׳אט למנוע Agent/LLM עם הרשאות מתאימות.`
+      : `I am online and available in this chat.\n\nAsk me a question or give me a task and I will answer conversationally. External actions require an Agent/LLM backend with the right permissions.`;
+  }
 
   if (/^(hi|hello|hey|שלום|היי|הי)\b/.test(lower)) {
-    return `שלום! ✅ ${intro}
-
-${capabilities.join('\n')}`;
+    return isHebrew
+      ? `היי, אני כאן. איך אפשר לעזור?`
+      : `Hi, I am here. How can I help?`;
   }
-  if (lower.includes('status') || lower.includes('סטטוס') || lower.includes('עובד')) {
-    return `✅ ${intro}
 
-Bot username: ${bot.username || 'not set'}
-Mode: Dashboard chatbot fallback
-Next: open ${bot.username || 'the bot'} in Telegram if you want two-way Telegram delivery.`;
+  return isHebrew
+    ? `אני מבין. כדי לעזור בצורה טובה, הנה איך הייתי מתקדם: תן לי את המטרה המדויקת, הקישור או הקובץ הרלוונטי, ומה נחשב מבחינתך לתוצאה תקינה — ואני אענה כמו צ׳אט עוזר ולא רק כאישור קבלה.`
+    : `I understand. To help well, send the exact goal, the relevant link or file, and what a correct result should look like — then I will respond like a useful chat assistant rather than just acknowledging receipt.`;
+}
+
+function containsPotentialSecret(text) {
+  return /(sk-[A-Za-z0-9_-]{20,}|AIza[\w-]{20,}|xox[baprs]-|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----)/.test(String(text || ''));
+}
+
+function llmConfig(text = '') {
+  if (containsPotentialSecret(text)) return null;
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      provider: 'openai',
+      apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+      model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    };
   }
-  if (lower.includes('telegram') || lower.includes('טלגרם')) {
-    return `Telegram note: I can answer inside this dashboard now. To send messages through Telegram, first start a chat with ${bot.username || 'this bot'} in Telegram, then refresh the dashboard.`;
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      provider: 'openrouter',
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseUrl: (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, ''),
+      model: process.env.CHAT_MODEL || process.env.OPENROUTER_MODEL || 'openrouter/auto'
+    };
   }
-  return `✅ קיבלתי: "${normalized.slice(0, 240)}"
+  if (process.env.DISABLE_PUBLIC_AI !== 'true') {
+    return {
+      provider: 'pollinations',
+      apiKey: '',
+      baseUrl: (process.env.PUBLIC_AI_BASE_URL || 'https://text.pollinations.ai/openai').replace(/\/$/, ''),
+      model: process.env.PUBLIC_AI_MODEL || 'openai'
+    };
+  }
+  return null;
+}
 
-${intro}
+async function recentConversationMessages(conversationId, limit = 8) {
+  if (!SB_KEY || !conversationId) return [];
+  try {
+    const url = `${SB_URL}/rest/v1/messages?conversation_id=eq.${encodeURIComponent(conversationId)}&select=direction,sender_type,content,created_at&order=created_at.desc&limit=${limit}`;
+    const resp = await fetchWithTimeout(url, {
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+    }, 8000);
+    if (!resp.ok) return [];
+    const rows = await resp.json();
+    return Array.isArray(rows) ? rows.reverse() : [];
+  } catch (err) {
+    console.error('Recent chat history load failed:', err.message);
+    return [];
+  }
+}
 
-This is the safe built-in dashboard chatbot fallback. It keeps the chat usable even when Telegram has no active chat yet.`;
+function toChatMessages(bot, text, history = []) {
+  const system = [
+    'You are a real conversational AI assistant inside a Telegram Bots Dashboard.',
+    'Reply in the user\'s language; if the user writes Hebrew, reply in Hebrew.',
+    'Be helpful, direct, natural, and task-oriented, like a strong agent chat assistant.',
+    'Do not answer with receipt-only phrases such as "I received your message" or "קיבלתי את ההודעה".',
+    'Do not describe yourself as a fallback, demo, dashboard mode, or basic connection.',
+    'If you cannot actually perform an external side effect from this chat, say what information or permission is needed, then still provide the best useful answer.',
+    `Bot display name: ${bot?.name || 'Dashboard bot'}. Telegram username: ${bot?.username || 'unknown'}.`
+  ].join('\n');
+
+  const messages = [{ role: 'system', content: system }];
+  for (const row of history) {
+    const role = row.direction === 'inbound' || row.sender_type === 'user' ? 'user' : 'assistant';
+    const content = String(row.content || '').slice(0, 2000);
+    if (content) messages.push({ role, content });
+  }
+  messages.push({ role: 'user', content: String(text || '').slice(0, 4000) });
+  return messages;
+}
+
+function cleanModelReply(reply) {
+  return String(reply || '')
+    .replace(/\n{2,}---\n\nSupport Pollinations\.AI:[\s\S]*$/i, '')
+    .replace(/\n{2,}---\n\n🌸 Ad 🌸[\s\S]*$/i, '')
+    .trim();
+}
+
+async function generateAgentReply(bot, text, conversationId = null) {
+  const config = llmConfig();
+  const history = await recentConversationMessages(conversationId);
+  if (!config) return { reply: buildFallbackChatReply(bot, text), provider: 'local-fallback' };
+
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
+      ...(config.provider === 'openrouter' ? {
+        'HTTP-Referer': PUBLIC_BASE_URL || DEPLOY_PUBLIC_BASE_URL,
+        'X-Title': 'Telegram Bots Dashboard'
+      } : {})
+    };
+
+    const resp = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        messages: toChatMessages(bot, text, history),
+        temperature: 0.6,
+        max_tokens: 900
+      })
+    }, 25000);
+
+    if (!resp.ok) throw new Error(`${config.provider} chat failed: ${resp.status}`);
+    const data = await resp.json();
+    const reply = cleanModelReply(data?.choices?.[0]?.message?.content);
+    if (!reply) throw new Error(`${config.provider} returned an empty reply`);
+    return { reply, provider: config.provider, model: config.model };
+  } catch (err) {
+    console.error('AI chat generation failed:', err.message);
+    return { reply: buildFallbackChatReply(bot, text), provider: 'local-fallback', error: err.message };
+  }
 }
 
 async function persistChatExchange(bot, conversationId, direction, senderType, content) {
@@ -654,10 +758,10 @@ app.post('/api/chat/:botId', async (req, res) => {
     }
 
     await persistChatExchange(bot, conversationId, 'inbound', 'user', text);
-    const reply = buildDashboardChatReply(bot, text);
-    await persistChatExchange(bot, conversationId, 'outbound', 'bot', reply);
+    const ai = await generateAgentReply(bot, text, conversationId);
+    await persistChatExchange(bot, conversationId, 'outbound', 'bot', ai.reply);
 
-    res.json({ ok: true, reply, conversationId, mode: 'dashboard-chatbot' });
+    res.json({ ok: true, reply: ai.reply, conversationId, mode: 'agent-chat', provider: ai.provider, model: ai.model });
   } catch (err) {
     console.error('Dashboard chat error:', err.message);
     res.status(500).json({ ok: false, error: 'Dashboard chatbot failed' });
@@ -727,15 +831,16 @@ app.post('/api/telegram/:botId/webhook', async (req, res) => {
     created_at: receivedAt
   });
 
-  const reply = `✅ ${bot.name} מחובר וקיבל את ההודעה שלך.\n\nכרגע זה חיבור בסיסי לדשבורד: ההודעה נשמרת ומופיעה שם. השלב הבא הוא לחבר את הבוט למנוע AI/Agent כדי שיענה תשובות חכמות.`;
+  const ai = await generateAgentReply(bot, inboundText, conversationId);
   try {
-    await tgApi(botId, 'sendMessage', { chat_id: chat.id, text: reply });
+    await tgApi(botId, 'sendMessage', { chat_id: chat.id, text: ai.reply });
     await saveMessageRow({
       bot_id: bot.supabaseId,
+      conversation_id: conversationId,
       direction: 'outbound',
       sender_type: 'bot',
       content_type: 'text',
-      content: reply,
+      content: ai.reply,
       created_at: new Date().toISOString()
     });
   } catch (err) {

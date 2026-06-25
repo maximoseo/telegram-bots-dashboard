@@ -31,6 +31,10 @@ test.before(async () => {
       CUSTOM_BOTS_FILE: path.join(os.tmpdir(), `tgb-custom-bots-${Date.now()}.json`),
       SUPABASE_URL: 'http://127.0.0.1:9',
       SUPABASE_SERVICE_ROLE_KEY: '',
+      OPENAI_API_KEY: '',
+      OPENROUTER_API_KEY: '',
+      CHAT_MODEL: '',
+      DISABLE_PUBLIC_AI: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -131,10 +135,13 @@ test('dashboard embeds MaximoSEO dashboards panel exactly once without duplicate
   assert.match(source, /function reloadDashboardsPanel\(\)/);
 });
 
-test('dashboard chatbot works without an active Telegram chat', async () => {
-  const source = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
-  assert.match(source, /\/api\/chat\/\$\{activeBot\.id\}/);
-  assert.doesNotMatch(source, /No active Telegram chats found/);
+test('dashboard chatbot uses agent-chat responses instead of receipt-only fallback copy', async () => {
+  const source = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(source, /async function generateAgentReply\(/);
+  assert.match(source, /chat\/completions/);
+  assert.match(source, /function cleanModelReply\(/);
+  assert.doesNotMatch(source, /קיבלתי את ההודעה שלך/);
+  assert.doesNotMatch(source, /safe built-in dashboard chatbot fallback/);
 
   const missingOrigin = await fetch(`${BASE}/api/chat/nous`, {
     method: 'POST',
@@ -146,13 +153,15 @@ test('dashboard chatbot works without an active Telegram chat', async () => {
   const reply = await fetch(`${BASE}/api/chat/nous`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: BASE },
-    body: JSON.stringify({ text: 'status' }),
+    body: JSON.stringify({ text: 'תענה לי כמו צאט אמיתי' }),
   });
   assert.equal(reply.status, 200);
   const body = await reply.json();
   assert.equal(body.ok, true);
-  assert.equal(body.mode, 'dashboard-chatbot');
-  assert.match(body.reply, /dashboard chat mode/i);
+  assert.equal(body.mode, 'agent-chat');
+  assert.equal(body.provider, 'local-fallback');
+  assert.doesNotMatch(body.reply, /קיבלתי|received|fallback|dashboard chat mode/i);
+  assert.match(body.reply, /צ׳אט|צאט|לעזור/);
 });
 
 test('telegram reply webhook routes exist and persist chats for dashboard send targets', async () => {
