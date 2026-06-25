@@ -1013,7 +1013,8 @@ async function saveToken(botId) {
     const data = await resp.json();
     
     if (data.ok) {
-      showToast(`✅ ${data.bot.first_name} configured!`, 'success');
+      const persistenceNote = data.persistence && data.persistence.durable === false ? ' (active now, but persistence needs Supabase schema)' : '';
+      showToast(`✅ ${data.bot.first_name} configured!${persistenceNote}`, data.persistence && data.persistence.durable === false ? 'info' : 'success');
       checkSetupStatus();
       checkBotHealth();
     } else {
@@ -1042,7 +1043,7 @@ async function addBotFromToken() {
     });
     const data = await resp.json();
     if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to add bot');
-    showToast(`✅ Added ${data.bot.name}`, 'success');
+    showToast(`✅ Added ${data.bot.name}${data.persistence && data.persistence.durable === false ? ' (not durable until Supabase schema is fixed)' : ''}`, data.persistence && data.persistence.durable === false ? 'info' : 'success');
     await loadBots();
     await checkSetupStatus();
     await checkBotHealth();

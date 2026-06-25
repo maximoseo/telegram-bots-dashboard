@@ -212,8 +212,8 @@ async function loadTokensFromDB() {
 }
 
 async function saveBotConfigToDB() {
-  if (!SB_KEY) return;
-  await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
+  if (!SB_KEY) return { skipped: true, reason: 'Supabase key not configured' };
+  const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
     method: 'POST',
     headers: {
       'apikey': SB_KEY,
@@ -223,12 +223,15 @@ async function saveBotConfigToDB() {
     },
     body: JSON.stringify({ bot_id: BOT_CONFIG_ROW_ID, token: JSON.stringify(botConfig), updated_at: new Date().toISOString() })
   });
+  if (!resp.ok) throw new Error(`Supabase bot config save failed: ${resp.status}`);
+  return { ok: true };
 }
 
 // ─── Save token to Supabase ───────────────────────────────────
 async function saveTokenToDB(botId, token) {
   try {
-    await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
+    if (!SB_KEY) return { ok: false, durable: false, error: 'Supabase key not configured' };
+    const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens`, {
       method: 'POST',
       headers: {
         'apikey': SB_KEY,
@@ -238,8 +241,11 @@ async function saveTokenToDB(botId, token) {
       },
       body: JSON.stringify({ bot_id: botId, token, updated_at: new Date().toISOString() })
     });
+    if (!resp.ok) throw new Error(`Supabase token save failed: ${resp.status}`);
+    return { ok: true, durable: true };
   } catch (e) {
     console.error('Failed to save token:', e.message);
+    return { ok: false, durable: false, error: 'Token is active in memory but was not saved durably' };
   }
 }
 async function deleteTokenFromDB(botId) {
@@ -401,14 +407,14 @@ app.post('/api/bots', setupLimiter, async (req, res) => {
     botConfig.customBots.push(bot);
     BOT_TOKENS[id] = String(token).trim();
     saveBotConfig();
-    await saveTokenToDB(id, BOT_TOKENS[id]);
+    const persistence = await saveTokenToDB(id, BOT_TOKENS[id]);
     let webhook = null;
     try {
       webhook = await registerWebhookForBot(id, publicBaseUrl(req));
     } catch (e) {
       console.error('Add bot webhook setup failed:', e.message);
     }
-    res.json({ ok: true, bot: publicBot(bot), telegram: info, webhook });
+    res.json({ ok: true, bot: publicBot(bot), telegram: info, webhook, persistence });
   } catch (err) {
     console.error('Add bot error:', err.message);
     res.status(500).json({ error: 'Failed to add bot' });
@@ -464,7 +470,7 @@ app.post('/api/setup/token', setupLimiter, async (req, res) => {
     
     // Save
     BOT_TOKENS[botId] = token;
-    await saveTokenToDB(botId, token);
+    const persistence = await saveTokenToDB(botId, token);
     let webhook = null;
     try {
       webhook = await registerWebhookForBot(botId, publicBaseUrl(req));
@@ -472,7 +478,7 @@ app.post('/api/setup/token', setupLimiter, async (req, res) => {
       console.error('Token setup webhook setup failed:', e.message);
     }
     
-    res.json({ ok: true, bot: testData.result, webhook });
+    res.json({ ok: true, bot: testData.result, webhook, persistence });
   } catch (err) {
     console.error('Token setup error:', err.message);
     res.status(500).json({ error: 'Token setup failed' });
