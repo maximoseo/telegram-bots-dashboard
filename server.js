@@ -463,7 +463,7 @@ function startWebhookWatchdog() {
   setInterval(() => {
     if (!tokenLoadCompleted || configuredTokenCount() === 0) return;
     registerConfiguredWebhooks(PUBLIC_BASE_URL).catch(err => console.error('❌ webhook watchdog failed:', err.message));
-  }, 60 * 1000);
+  }, 10 * 1000);
 }
 
 // ─── Bot Management ───────────────────────────────────────────
