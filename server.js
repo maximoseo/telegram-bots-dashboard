@@ -7,8 +7,12 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security headers
-app.use(helmet());
+// Security headers.
+// This dashboard is a single-file app with inline CSS/JS in public/index.html,
+// so Helmet's default CSP blocks the app runtime. Keep Helmet's other
+// hardening headers, but disable CSP until the frontend is split into
+// external hashed assets.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // CORS — allow frontend (same-origin) and external dashboard consumers
 app.use((req, res, next) => {
