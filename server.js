@@ -1,8 +1,6 @@
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,57 +58,6 @@ function validateCSRF(req) {
   return { valid: false, error: 'Missing Origin and Referer headers — possible CSRF attack' };
 }
 
-// ─── Session Persistence ─────────────────────────────────
-// File-backed session store survives server restarts within the same deploy.
-// Cold deploys (new Render deploy) lose sessions — same as current behavior.
-const SESSION_FILE = process.env.SESSION_FILE || '/tmp/tgb-sessions.json';
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h expiry
-const sessions = new Map();
-
-function saveSessions() {
-  try {
-    const obj = Object.fromEntries(sessions);
-    const tmp = SESSION_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(obj));
-    fs.renameSync(tmp, SESSION_FILE);
-  } catch (e) {
-    console.error('[SESSION] Failed to save sessions:', e.message);
-  }
-}
-
-function loadSessions() {
-  try {
-    if (!fs.existsSync(SESSION_FILE)) return 0;
-    const raw = fs.readFileSync(SESSION_FILE, 'utf8');
-    const obj = JSON.parse(raw);
-    const now = Date.now();
-    let loaded = 0, expired = 0;
-    for (const [token, data] of Object.entries(obj)) {
-      if (data.created && (now - data.created) < SESSION_TTL_MS) {
-        sessions.set(token, data);
-        loaded++;
-      } else {
-        expired++;
-      }
-    }
-    if (expired > 0) saveSessions(); // prune expired
-    console.log(`[SESSION] Hydrated ${loaded} session(s) from disk${expired > 0 ? ` (${expired} expired pruned)` : ''}`);
-    return loaded;
-  } catch (e) {
-    console.error('[SESSION] Failed to load sessions:', e.message);
-    return 0;
-  }
-}
-
-// Dashboard password — set via env var for persistence across cold deploys
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || crypto.randomBytes(16).toString('hex');
-
-// Log auto-generated password so operator can set it via env var for persistence
-if (!process.env.DASHBOARD_PASSWORD) {
-  console.log(`[AUTH] No DASHBOARD_PASSWORD env var set. Auto-generated: ${DASHBOARD_PASSWORD}`);
-  console.log('[AUTH] Set DASHBOARD_PASSWORD environment variable for persistent auth across restarts.');
-}
-
 // Rate limiting: global 100 req/min per IP
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -125,15 +72,6 @@ app.use(globalLimiter);
 // can hide route-order regressions during audits.
 app.use(express.json({ limit: '1mb' }));
 
-// Stricter rate limit for login: 10 req/min
-const loginLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many login attempts. Try again in a minute.' }
-});
-
 // Stricter rate limit for setup endpoints: 5 req/min
 const setupLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -143,46 +81,8 @@ const setupLimiter = rateLimit({
   message: { error: 'Too many setup requests. Try again in a minute.' }
 });
 
-// Auth middleware — always requires valid session, never falls open
-function requireAuth(req, res, next) {
-  const token = (req.headers['x-session-id'] || '').trim();
-  const session = sessions.get(token);
-  if (!session) {
-    return res.status(401).json({ error: 'Authentication required. POST /api/login with { password }.' });
-  }
-  // Check session TTL — reject expired tokens
-  if (Date.now() - session.created >= SESSION_TTL_MS) {
-    sessions.delete(token);
-    saveSessions();
-    return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  }
-  next();
-}
-
-app.post('/api/login', loginLimiter, (req, res) => {
-  const csrf = validateCSRF(req);
-  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
-  const { password } = req.body || {};
-  if (password === DASHBOARD_PASSWORD) {
-    const token = crypto.randomBytes(24).toString('hex');
-    sessions.set(token, { created: Date.now() });
-    saveSessions();  // persist across restarts
-    return res.json({ ok: true, token });
-  }
-  res.status(401).json({ ok: false, error: 'Invalid password.' });
-});
-
 app.get('/api/auth-check', (req, res) => {
-  const token = (req.headers['x-session-id'] || '').trim();
-  const session = sessions.get(token);
-  if (!session) return res.json({ ok: false, needsAuth: true });
-  // Reject expired sessions
-  if (Date.now() - session.created >= SESSION_TTL_MS) {
-    sessions.delete(token);
-    saveSessions();
-    return res.json({ ok: false, needsAuth: true });
-  }
-  res.json({ ok: true, needsAuth: true });
+  res.json({ ok: true, needsAuth: false });
 });
 
 // Supabase
@@ -286,10 +186,6 @@ app.all('/api/sb/*', async (req, res) => {
   if (!ALLOWED_TABLES.includes(table)) {
     return res.status(403).json({ error: `Forbidden: table '${table}' not in proxy whitelist` });
   }
-  // Require auth for ALL proxy operations (reads also expose sensitive data)
-  const authed = await new Promise(resolve => requireAuth(req, res, () => resolve(true)));
-  if (authed !== true) return;
-  
   // Additional check: POST/PATCH/PUT require body validation
   if (['POST','PATCH','PUT'].includes(req.method) && !req.body) {
     return res.status(400).json({ error: 'Request body required for write operations' });
@@ -339,7 +235,7 @@ app.get('/api/setup/status', (req, res) => {
   }))});
 });
 
-app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
+app.post('/api/setup/token', setupLimiter, async (req, res) => {
   const csrf = validateCSRF(req);
   if (!csrf.valid) return res.status(403).json({ error: csrf.error });
   try {
@@ -363,7 +259,7 @@ app.post('/api/setup/token', setupLimiter, requireAuth, async (req, res) => {
 });
 
 // ─── Telegram Endpoints ──────────────────────────────────────
-app.get('/api/telegram/:botId/me', requireAuth, async (req, res) => {
+app.get('/api/telegram/:botId/me', async (req, res) => {
   try {
     const info = await tgApi(req.params.botId, 'getMe');
     res.json({ ok: true, result: info });
@@ -373,7 +269,7 @@ app.get('/api/telegram/:botId/me', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/telegram/:botId/updates', requireAuth, async (req, res) => {
+app.get('/api/telegram/:botId/updates', async (req, res) => {
   try {
     const offset = req.query.offset || 0;
     const limit = parseInt(req.query.limit) || 50;
@@ -387,7 +283,7 @@ app.get('/api/telegram/:botId/updates', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/telegram/:botId/send', requireAuth, async (req, res) => {
+app.post('/api/telegram/:botId/send', async (req, res) => {
   const csrf = validateCSRF(req);
   if (!csrf.valid) return res.status(403).json({ error: csrf.error });
   try {
@@ -403,7 +299,7 @@ app.post('/api/telegram/:botId/send', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
+app.get('/api/telegram/:botId/chats', async (req, res) => {
   try {
     const updates = await tgApi(req.params.botId, 'getUpdates', { limit: 100 });
     const chats = {};
@@ -430,7 +326,7 @@ app.get('/api/telegram/:botId/chats', requireAuth, async (req, res) => {
 });
 
 // Batch health
-app.get('/api/bots/health', requireAuth, async (req, res) => {
+app.get('/api/bots/health', async (req, res) => {
   const results = {};
   await Promise.allSettled(
     BOTS.map(async (bot) => {
@@ -452,7 +348,7 @@ app.get('/api/bots/health', requireAuth, async (req, res) => {
 });
 
 // ─── Stats ───────────────────────────────────────────────────
-app.get('/api/stats', requireAuth, async (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
     const [convosResp, msgsResp] = await Promise.all([
       fetchWithTimeout(`${SB_URL}/rest/v1/conversations?select=id,bot_id,message_count,total_tokens,total_cost,created_at`, {
@@ -497,7 +393,7 @@ app.get('/api/stats', requireAuth, async (req, res) => {
 });
 
 // ─── Search ──────────────────────────────────────────────────
-app.get('/api/search', requireAuth, async (req, res) => {
+app.get('/api/search', async (req, res) => {
   try {
     const q = req.query.q;
     if (!q) return res.json({ messages: [], conversations: [] });
@@ -522,7 +418,7 @@ app.get('/api/search', requireAuth, async (req, res) => {
 });
 
 // ─── Export ──────────────────────────────────────────────────
-app.get('/api/export/:botId', requireAuth, async (req, res) => {
+app.get('/api/export/:botId', async (req, res) => {
   try {
     const bot = BOTS.find(b => b.id === req.params.botId);
     if (!bot) return res.status(400).json({ error: 'Invalid bot' });
@@ -557,26 +453,6 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Startup ─────────────────────────────────────────────────
-// Hydrate persisted sessions before server starts
-loadSessions();
-
-// Periodic session cleanup — prune expired entries every hour to prevent unbounded memory growth
-// Addresses MAX-578: Session Map grows unboundedly with no expiry or cleanup
-setInterval(() => {
-  const now = Date.now();
-  let pruned = 0;
-  for (const [token, sess] of sessions) {
-    if (now - sess.created >= SESSION_TTL_MS) {
-      sessions.delete(token);
-      pruned++;
-    }
-  }
-  if (pruned > 0) {
-    saveSessions();
-    console.log(`[SESSION] Pruned ${pruned} expired session(s). Active: ${sessions.size}`);
-  }
-}, 60 * 60 * 1000); // every hour
-
 // Start server immediately — Render health checks need a fast listen().
 // Token loading happens in background so a slow/hung Supabase never blocks startup.
 app.listen(PORT, '0.0.0.0', () => {

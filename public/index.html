@@ -378,40 +378,8 @@ let botHealth = {};
 let searchTimeout = null;
 let autoRefreshInterval = null;
 let mobileReady = false; // set true after init so the default bot selection doesn't auto-switch tabs
-let dashboardSession = localStorage.getItem('tgbDashboardSession') || '';
-
-async function loginDashboard() {
-  const password = window.prompt('Enter Telegram Bots Dashboard password');
-  if (!password) throw new Error('Login required');
-  const resp = await fetch('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || !data.token) throw new Error(data.error || 'Login failed');
-  dashboardSession = data.token;
-  localStorage.setItem('tgbDashboardSession', dashboardSession);
-  return dashboardSession;
-}
-
 async function authFetch(url, options = {}) {
-  const withSession = (token) => fetch(url, {
-    ...options,
-    headers: { ...(options.headers || {}), 'X-Session-Id': token }
-  });
-  let resp = dashboardSession ? await withSession(dashboardSession) : null;
-  if (!resp || resp.status === 401) {
-    dashboardSession = '';
-    localStorage.removeItem('tgbDashboardSession');
-    const token = await loginDashboard();
-    resp = await withSession(token);
-  }
-  if (resp.status === 401) {
-    dashboardSession = '';
-    localStorage.removeItem('tgbDashboardSession');
-  }
-  return resp;
+  return fetch(url, options);
 }
 
 

@@ -20,8 +20,6 @@ services:
         sync: false
       - key: BOT_TOKEN_CODEX
         sync: false
-      - key: DASHBOARD_PASSWORD
-        sync: false
     headers:
       - path: /*
         name: Content-Security-Policy
