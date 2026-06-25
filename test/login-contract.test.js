@@ -54,6 +54,7 @@ test('frontend does not prompt for a dashboard password and loads bots dynamical
   assert.match(source, /async function loadBots\(\)/);
   assert.match(source, /async function addBotFromToken\(\)/);
   assert.match(source, /async function deleteBot\(botId\)/);
+  assert.match(source, /async function enableTelegramReplies\(botId\)/);
 });
 
 test('auth-check reports the dashboard is open without password', async () => {
@@ -115,4 +116,23 @@ test('same-origin CSRF protection remains on mutation endpoints', async () => {
     body: JSON.stringify({ token: 'invalid' }),
   });
   assert.equal(crossOrigin.status, 403);
+});
+
+test('telegram reply webhook routes exist and are protected', async () => {
+  const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(serverSource, /setWebhook/);
+  assert.match(serverSource, /x-telegram-bot-api-secret-token/);
+  assert.match(serverSource, /app\.post\('\/api\/telegram\/:botId\/webhook'/);
+
+  const registerMissingOrigin = await fetch(`${BASE}/api/telegram/nous/webhook/register`, {
+    method: 'POST',
+  });
+  assert.equal(registerMissingOrigin.status, 403);
+
+  const webhookWithoutToken = await fetch(`${BASE}/api/telegram/nous/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { chat: { id: 1 }, text: 'hi' } }),
+  });
+  assert.equal(webhookWithoutToken.status, 404);
 });

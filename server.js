@@ -117,6 +117,7 @@ const DEFAULT_BOTS = [
 
 const CUSTOM_BOTS_FILE = process.env.CUSTOM_BOTS_FILE || path.join('/tmp', 'tgb-custom-bots.json');
 const BOT_CONFIG_ROW_ID = '__dashboard_bot_config__';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 let botConfig = { customBots: [], hiddenDefaultIds: [] };
 let BOTS = [];
 
@@ -305,6 +306,68 @@ async function tgApi(botId, method, body = null) {
   return data.result;
 }
 
+function publicBaseUrl(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  return `${proto}://${req.get('host')}`.replace(/\/$/, '');
+}
+
+function webhookSecretFor(botId) {
+  const token = BOT_TOKENS[botId] || '';
+  return crypto.createHmac('sha256', token).update(`telegram-webhook:${botId}`).digest('hex');
+}
+
+async function registerWebhookForBot(botId, baseUrl) {
+  const bot = BOTS.find(b => b.id === botId);
+  if (!bot) throw new Error('Bot not found');
+  if (!BOT_TOKENS[botId]) throw new Error('No token configured for bot');
+  const url = `${baseUrl.replace(/\/$/, '')}/api/telegram/${encodeURIComponent(botId)}/webhook`;
+  const result = await tgApi(botId, 'setWebhook', {
+    url,
+    allowed_updates: ['message'],
+    drop_pending_updates: false,
+    secret_token: webhookSecretFor(botId)
+  });
+  return { ok: true, bot: publicBot(bot), webhookUrl: url, result };
+}
+
+async function saveMessageRow(row) {
+  if (!SB_KEY) return { skipped: true, reason: 'Supabase key not configured' };
+  try {
+    const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(row)
+    });
+    if (!resp.ok) throw new Error(`Supabase messages insert failed: ${resp.status}`);
+    return { ok: true };
+  } catch (e) {
+    console.error('Failed to store Telegram message:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+function chatLabel(chat = {}) {
+  return chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' ') || String(chat.id || 'Telegram user');
+}
+
+async function registerConfiguredWebhooks(baseUrl) {
+  if (!baseUrl) return;
+  const configured = BOTS.filter(bot => BOT_TOKENS[bot.id]);
+  for (const bot of configured) {
+    try {
+      await registerWebhookForBot(bot.id, baseUrl);
+      console.log(`✅ Telegram webhook registered for ${bot.id}`);
+    } catch (e) {
+      console.error(`Webhook auto-register failed for ${bot.id}:`, e.message);
+    }
+  }
+}
 
 // ─── Bot Management ───────────────────────────────────────────
 app.get('/api/bots', (req, res) => {
@@ -339,7 +402,13 @@ app.post('/api/bots', setupLimiter, async (req, res) => {
     BOT_TOKENS[id] = String(token).trim();
     saveBotConfig();
     await saveTokenToDB(id, BOT_TOKENS[id]);
-    res.json({ ok: true, bot: publicBot(bot), telegram: info });
+    let webhook = null;
+    try {
+      webhook = await registerWebhookForBot(id, publicBaseUrl(req));
+    } catch (e) {
+      console.error('Add bot webhook setup failed:', e.message);
+    }
+    res.json({ ok: true, bot: publicBot(bot), telegram: info, webhook });
   } catch (err) {
     console.error('Add bot error:', err.message);
     res.status(500).json({ error: 'Failed to add bot' });
@@ -396,8 +465,14 @@ app.post('/api/setup/token', setupLimiter, async (req, res) => {
     // Save
     BOT_TOKENS[botId] = token;
     await saveTokenToDB(botId, token);
+    let webhook = null;
+    try {
+      webhook = await registerWebhookForBot(botId, publicBaseUrl(req));
+    } catch (e) {
+      console.error('Token setup webhook setup failed:', e.message);
+    }
     
-    res.json({ ok: true, bot: testData.result });
+    res.json({ ok: true, bot: testData.result, webhook });
   } catch (err) {
     console.error('Token setup error:', err.message);
     res.status(500).json({ error: 'Token setup failed' });
@@ -412,6 +487,76 @@ app.get('/api/telegram/:botId/me', async (req, res) => {
   } catch (err) {
     console.error('getMe error:', err.message);
     res.json({ ok: false, error: 'Telegram API request failed' });
+  }
+});
+
+app.post('/api/telegram/:botId/webhook/register', setupLimiter, async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
+  try {
+    const result = await registerWebhookForBot(req.params.botId, publicBaseUrl(req));
+    res.json(result);
+  } catch (err) {
+    console.error('Webhook register error:', err.message);
+    res.status(400).json({ ok: false, error: 'Webhook registration failed' });
+  }
+});
+
+app.get('/api/telegram/:botId/webhook/info', async (req, res) => {
+  try {
+    const result = await tgApi(req.params.botId, 'getWebhookInfo');
+    const sanitized = { ...result };
+    if (sanitized.url) sanitized.url = sanitized.url.replace(/\/api\/telegram\/[^/]+\/webhook$/, '/api/telegram/[bot]/webhook');
+    res.json({ ok: true, result: sanitized });
+  } catch (err) {
+    console.error('Webhook info error:', err.message);
+    res.json({ ok: false, error: 'Telegram API request failed' });
+  }
+});
+
+app.post('/api/telegram/:botId/webhook', async (req, res) => {
+  const botId = req.params.botId;
+  const bot = BOTS.find(b => b.id === botId);
+  if (!bot || !BOT_TOKENS[botId]) return res.status(404).json({ ok: false });
+
+  const expectedSecret = webhookSecretFor(botId);
+  const actualSecret = req.get('x-telegram-bot-api-secret-token') || '';
+  if (actualSecret !== expectedSecret) return res.status(403).json({ ok: false });
+
+  // Telegram retries non-2xx responses. Acknowledge quickly and process async.
+  res.json({ ok: true });
+
+  const update = req.body || {};
+  const msg = update.message;
+  if (!msg || !msg.chat) return;
+
+  const inboundText = msg.text || msg.caption || '[non-text message]';
+  const chat = msg.chat;
+  const from = msg.from || {};
+  const receivedAt = msg.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();
+
+  await saveMessageRow({
+    bot_id: bot.supabaseId,
+    direction: 'inbound',
+    sender_type: 'user',
+    content_type: msg.text ? 'text' : 'message',
+    content: `${chatLabel(chat)}: ${inboundText}`,
+    created_at: receivedAt
+  });
+
+  const reply = `✅ ${bot.name} מחובר וקיבל את ההודעה שלך.\n\nכרגע זה חיבור בסיסי לדשבורד: ההודעה נשמרת ומופיעה שם. השלב הבא הוא לחבר את הבוט למנוע AI/Agent כדי שיענה תשובות חכמות.`;
+  try {
+    await tgApi(botId, 'sendMessage', { chat_id: chat.id, text: reply });
+    await saveMessageRow({
+      bot_id: bot.supabaseId,
+      direction: 'outbound',
+      sender_type: 'bot',
+      content_type: 'text',
+      content: reply,
+      created_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Webhook auto-reply failed:', err.message);
   }
 });
 
@@ -614,4 +759,7 @@ loadTokensFromDB()
     tokenLoadCompleted = true;
     const configured = configuredTokenCount();
     console.log(`🔑 Tokens after background load: ${configured}/${BOTS.length}`);
+    if (PUBLIC_BASE_URL && configured > 0) {
+      registerConfiguredWebhooks(PUBLIC_BASE_URL).catch(err => console.error('❌ webhook auto-register failed:', err.message));
+    }
   });

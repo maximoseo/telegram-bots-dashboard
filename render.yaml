@@ -8,6 +8,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PUBLIC_BASE_URL
+        value: https://tgb-06230145.onrender.com
       - key: SUPABASE_URL
         value: https://sunrupuwvpalipiuebcv.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY

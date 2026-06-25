@@ -983,7 +983,8 @@ async function checkSetupStatus() {
           <strong style="font-size:12px">${escapeHtml(b.name)}</strong>
           <span style="font-size:10px;color:var(--mt)">${escapeHtml(b.username || '')}</span>
           <span style="font-size:10px;padding:2px 6px;border-radius:4px;${b.hasToken ? 'background:rgba(16,185,129,.15);color:var(--gn2)' : 'background:rgba(239,68,68,.15);color:var(--rd)'}">${b.hasToken ? '✅ Configured' : '❌ Missing'}</span>
-          <button class="hdr-btn" onclick="deleteBot('${b.id}')" style="margin-left:auto;color:var(--rd);border-color:rgba(239,68,68,.35)">🗑️ Delete</button>
+          <button class="hdr-btn" onclick="enableTelegramReplies('${b.id}')" style="margin-left:auto;color:var(--gn2);border-color:rgba(16,185,129,.35)">🔌 Enable replies</button>
+          <button class="hdr-btn" onclick="deleteBot('${b.id}')" style="color:var(--rd);border-color:rgba(239,68,68,.35)">🗑️ Delete</button>
         </div>
         <div style="display:flex;gap:6px">
           <input type="password" id="token-${b.id}" placeholder="Paste bot token from @BotFather..." style="flex:1;background:var(--bg);border:1px solid var(--b1);border-radius:6px;padding:6px 10px;color:var(--t1);font-size:11px;font-family:var(--mono)" ${b.hasToken ? 'value="••••••••"' : ''}>
@@ -1081,6 +1082,17 @@ async function restoreDefaultBots() {
     await checkBotHealth();
     if (!activeBot && BOTS[0]) selectBot(BOTS[0].id);
     showToast('Default bots restored', 'success');
+  } catch (e) {
+    showToast(`❌ ${e.message}`, 'error');
+  }
+}
+
+async function enableTelegramReplies(botId) {
+  try {
+    const resp = await authFetch(`/api/telegram/${encodeURIComponent(botId)}/webhook/register`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to enable replies');
+    showToast('✅ Telegram replies enabled', 'success');
   } catch (e) {
     showToast(`❌ ${e.message}`, 'error');
   }
