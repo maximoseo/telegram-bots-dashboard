@@ -118,6 +118,30 @@ test('same-origin CSRF protection remains on mutation endpoints', async () => {
   assert.equal(crossOrigin.status, 403);
 });
 
+test('dashboard chatbot works without an active Telegram chat', async () => {
+  const source = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  assert.match(source, /\/api\/chat\/\$\{activeBot\.id\}/);
+  assert.doesNotMatch(source, /No active Telegram chats found/);
+
+  const missingOrigin = await fetch(`${BASE}/api/chat/nous`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'status' }),
+  });
+  assert.equal(missingOrigin.status, 403);
+
+  const reply = await fetch(`${BASE}/api/chat/nous`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: BASE },
+    body: JSON.stringify({ text: 'status' }),
+  });
+  assert.equal(reply.status, 200);
+  const body = await reply.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.mode, 'dashboard-chatbot');
+  assert.match(body.reply, /dashboard chat mode/i);
+});
+
 test('telegram reply webhook routes exist and persist chats for dashboard send targets', async () => {
   const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(serverSource, /setWebhook/);

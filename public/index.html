@@ -532,77 +532,23 @@ async function sendMessage() {
   // Add user message
   addMessage('user', text);
   
-  // Store in Supabase
-  try {
-    const storeResp = await authFetch('/api/sb/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bot_id: activeBot.supabaseId,
-        direction: 'inbound',
-        sender_type: 'user',
-        content_type: 'text',
-        content: text,
-        created_at: new Date().toISOString()
-      })
-    });
-    if (!storeResp.ok) {
-      console.error('Store error:', storeResp.status, await storeResp.text().catch(() => ''));
-    }
-  } catch (e) {
-    console.error('Store error:', e);
-  }
-  
   // Show typing indicator
   showTyping();
   
-  // Try to send via Telegram and get response
+  // Send to the dashboard chatbot endpoint. This keeps the chat usable even
+  // when Telegram has no active conversation yet; Telegram delivery can still
+  // be enabled from Setup once a real Telegram chat exists.
   try {
-    // First, get available chats for this bot
-    const chatsResp = await authFetch(`/api/telegram/${activeBot.id}/chats`);
-    if (!chatsResp.ok) {
-      throw new Error(`Chats fetch failed: ${chatsResp.status}`);
-    }
-    const chatsData = await chatsResp.json();
-    
-    if (chatsData.ok && chatsData.chats && chatsData.chats.length > 0) {
-      // Send to the most recent chat
-      const chatId = chatsData.chats[0].id;
-      
-      const sendResp = await authFetch(`/api/telegram/${activeBot.id}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, text })
-      });
-      if (!sendResp.ok) {
-        throw new Error(`Send fetch failed: ${sendResp.status}`);
-      }
-      const sendData = await sendResp.json();
-      
-      hideTyping();
-      
-      if (sendData.ok) {
-        addMessage('system', `✅ Message sent via Telegram to ${chatsData.chats[0].username || chatId}`);
-        // Poll for bot response
-        await pollBotResponse(activeBot.id, chatId);
-      } else {
-        addMessage('error', `❌ Telegram error: ${sendData.error}`);
-      }
-    } else {
-      hideTyping();
-      // No chats available — try getUpdates to check
-      addMessage('system', `ℹ️ No active Telegram chats found for ${activeBot.name}. Start a conversation on Telegram first: ${activeBot.username}`);
-      
-      // Still try to get recent updates
-      const updatesResp = await authFetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
-      if (!updatesResp.ok) {
-        throw new Error(`Updates fetch failed: ${updatesResp.status}`);
-      }
-      const updatesData = await updatesResp.json();
-      if (updatesData.ok && updatesData.result && updatesData.result.length > 0) {
-        addMessage('system', `📬 Found ${updatesData.result.length} recent messages. Latest from: ${updatesData.result[updatesData.result.length-1]?.message?.chat?.username || 'unknown'}`);
-      }
-    }
+    const chatResp = await authFetch(`/api/chat/${activeBot.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!chatResp.ok) throw new Error(`Chat request failed: ${chatResp.status}`);
+    const chatData = await chatResp.json();
+    hideTyping();
+    if (chatData.ok) addMessage('bot', chatData.reply || '✅ Message received.');
+    else addMessage('error', `❌ Chatbot error: ${chatData.error || 'unknown error'}`);
   } catch (e) {
     hideTyping();
     addMessage('error', `❌ Connection error: ${e.message}`);
@@ -842,13 +788,17 @@ async function loadStats() {
   try {
     const resp = await authFetch('/api/stats');
     const stats = await resp.json();
+    const totalConversations = Number(stats.totalConversations || 0);
+    const totalMessages = Number(stats.totalMessages || 0);
+    const totalTokens = Number(stats.totalTokens || 0);
+    const totalCost = Number(stats.totalCost || 0);
     
-    document.getElementById('statConvos').textContent = stats.totalConversations;
-    document.getElementById('statMessages').textContent = stats.totalMessages;
-    document.getElementById('statTokens').textContent = stats.totalTokens > 1000 ? (stats.totalTokens/1000).toFixed(1) + 'K' : stats.totalTokens;
-    document.getElementById('statCost').textContent = '$' + stats.totalCost.toFixed(2);
+    document.getElementById('statConvos').textContent = totalConversations;
+    document.getElementById('statMessages').textContent = totalMessages;
+    document.getElementById('statTokens').textContent = totalTokens > 1000 ? (totalTokens/1000).toFixed(1) + 'K' : totalTokens;
+    document.getElementById('statCost').textContent = '$' + totalCost.toFixed(2);
     
-    renderBotStats(stats.perBot);
+    renderBotStats(stats.perBot || {});
   } catch (e) {
     console.error('Stats error:', e);
   }

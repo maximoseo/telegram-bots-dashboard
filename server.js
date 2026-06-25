@@ -363,6 +363,50 @@ function chatLabel(chat = {}) {
   return chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' ') || String(chat.id || 'Telegram user');
 }
 
+function buildDashboardChatReply(bot, text) {
+  const normalized = String(text || '').trim();
+  const lower = normalized.toLowerCase();
+  const intro = `${bot.name} is online in dashboard chat mode.`;
+  const capabilities = [
+    'I can receive messages here even before a Telegram user starts a chat with the bot.',
+    'Telegram delivery still needs at least one real Telegram conversation for that bot.',
+    'Messages are saved to the dashboard conversation history when persistence is configured.'
+  ];
+
+  if (/^(hi|hello|hey|שלום|היי|הי)\b/.test(lower)) {
+    return `שלום! ✅ ${intro}
+
+${capabilities.join('\n')}`;
+  }
+  if (lower.includes('status') || lower.includes('סטטוס') || lower.includes('עובד')) {
+    return `✅ ${intro}
+
+Bot username: ${bot.username || 'not set'}
+Mode: Dashboard chatbot fallback
+Next: open ${bot.username || 'the bot'} in Telegram if you want two-way Telegram delivery.`;
+  }
+  if (lower.includes('telegram') || lower.includes('טלגרם')) {
+    return `Telegram note: I can answer inside this dashboard now. To send messages through Telegram, first start a chat with ${bot.username || 'this bot'} in Telegram, then refresh the dashboard.`;
+  }
+  return `✅ קיבלתי: "${normalized.slice(0, 240)}"
+
+${intro}
+
+This is the safe built-in dashboard chatbot fallback. It keeps the chat usable even when Telegram has no active chat yet.`;
+}
+
+async function persistChatExchange(bot, conversationId, direction, senderType, content) {
+  return saveMessageRow({
+    bot_id: bot.supabaseId,
+    conversation_id: conversationId || null,
+    direction,
+    sender_type: senderType,
+    content_type: 'text',
+    content,
+    created_at: new Date().toISOString()
+  });
+}
+
 async function findConversation(bot, telegramChatId) {
   if (!SB_KEY || !bot || !telegramChatId) return null;
   const url = `${SB_URL}/rest/v1/conversations?bot_id=eq.${encodeURIComponent(bot.supabaseId)}&telegram_user_id=eq.${encodeURIComponent(String(telegramChatId))}&select=*&limit=1`;
@@ -584,6 +628,39 @@ app.get('/api/telegram/:botId/me', async (req, res) => {
   } catch (err) {
     console.error('getMe error:', err.message);
     res.json({ ok: false, error: 'Telegram API request failed' });
+  }
+});
+
+app.post('/api/chat/:botId', async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
+  try {
+    const bot = BOTS.find(b => b.id === req.params.botId);
+    if (!bot) return res.status(404).json({ ok: false, error: 'Bot not found' });
+
+    const text = String(req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ ok: false, error: 'text required' });
+
+    let conversationId = null;
+    try {
+      const conversationResult = await upsertTelegramConversation(
+        bot,
+        { id: `dashboard:${bot.id}`, username: 'Dashboard Chat' },
+        text
+      );
+      conversationId = conversationResult?.conversation?.id || null;
+    } catch (err) {
+      console.error('Dashboard chat conversation persistence failed:', err.message);
+    }
+
+    await persistChatExchange(bot, conversationId, 'inbound', 'user', text);
+    const reply = buildDashboardChatReply(bot, text);
+    await persistChatExchange(bot, conversationId, 'outbound', 'bot', reply);
+
+    res.json({ ok: true, reply, conversationId, mode: 'dashboard-chatbot' });
+  } catch (err) {
+    console.error('Dashboard chat error:', err.message);
+    res.status(500).json({ ok: false, error: 'Dashboard chatbot failed' });
   }
 });
 
