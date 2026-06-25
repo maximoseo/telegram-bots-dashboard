@@ -28,10 +28,16 @@ services:
         sync: false
       - key: CHAT_MODEL
         value: gpt-4o-mini
+      - key: HERMES_API_BASE_URL
+        sync: false
+      - key: HERMES_API_KEY
+        sync: false
+      - key: HERMES_MODEL
+        value: hermes-agent
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://sunrupuwvpalipiuebcv.supabase.co https://api.telegram.org; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://sunrupuwvpalipiuebcv.supabase.co https://api.telegram.org https://*.ngrok-free.app https://*.trycloudflare.com https://*.loca.lt; frame-src https://dashboards-panel.maximo-seo.ai; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
       - path: /*
         name: Strict-Transport-Security
         value: "max-age=63072000; includeSubDomains; preload"

@@ -3,12 +3,16 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const http = require('node:http');
 const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = 43117;
+const HERMES_PORT = 43118;
 const BASE = `http://127.0.0.1:${PORT}`;
 let server;
+let fakeHermes;
+let lastHermesRequest = null;
 let serverOutput = '';
 
 async function waitForHealth() {
@@ -23,6 +27,32 @@ async function waitForHealth() {
 }
 
 test.before(async () => {
+  fakeHermes = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'ok', platform: 'api_server' }));
+    }
+    if (req.url === '/v1/chat/completions' && req.method === 'POST') {
+      let raw = '';
+      req.on('data', (chunk) => { raw += chunk.toString(); });
+      req.on('end', () => {
+        lastHermesRequest = {
+          auth: req.headers.authorization || '',
+          sessionKey: req.headers['x-hermes-session-key'] || '',
+          body: JSON.parse(raw || '{}'),
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          choices: [{ message: { content: 'אני Hermes Agent אמיתי: בדקתי את הבקשה, אני יכול להשתמש בכלים כשמחברים אותי לשרת Hermes, ואענה כמו צ׳אט עוזר.' } }],
+        }));
+      });
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise((resolve) => fakeHermes.listen(HERMES_PORT, '127.0.0.1', resolve));
+
   server = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: {
@@ -34,6 +64,9 @@ test.before(async () => {
       OPENAI_API_KEY: '',
       OPENROUTER_API_KEY: '',
       CHAT_MODEL: '',
+      HERMES_API_BASE_URL: `http://127.0.0.1:${HERMES_PORT}`,
+      HERMES_API_KEY: 'test-hermes-key',
+      HERMES_MODEL: 'hermes-agent',
       DISABLE_PUBLIC_AI: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -44,9 +77,13 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  if (!server) return;
-  server.kill('SIGTERM');
-  await new Promise((resolve) => server.once('exit', resolve));
+  if (server) {
+    server.kill('SIGTERM');
+    await new Promise((resolve) => server.once('exit', resolve));
+  }
+  if (fakeHermes) {
+    await new Promise((resolve) => fakeHermes.close(resolve));
+  }
 });
 
 test('frontend does not prompt for a dashboard password and loads bots dynamically', () => {
@@ -78,6 +115,13 @@ test('dashboard APIs and bot management metadata are reachable without X-Session
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
   assert.equal(setupBody.total, 4);
+
+  const agent = await fetch(`${BASE}/api/agent/status`);
+  assert.equal(agent.status, 200);
+  const agentBody = await agent.json();
+  assert.equal(agentBody.agentConfigured, true);
+  assert.equal(agentBody.provider, 'hermes-agent');
+  assert.equal(agentBody.healthStatus, 'ok');
 
   const health = await fetch(`${BASE}/api/bots/health`);
   assert.equal(health.status, 200);
@@ -135,9 +179,11 @@ test('dashboard embeds MaximoSEO dashboards panel exactly once without duplicate
   assert.match(source, /function reloadDashboardsPanel\(\)/);
 });
 
-test('dashboard chatbot uses agent-chat responses instead of receipt-only fallback copy', async () => {
+test('dashboard chatbot uses Hermes Agent backend instead of receipt-only fallback copy', async () => {
   const source = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(source, /async function generateAgentReply\(/);
+  assert.match(source, /function hermesAgentConfig\(/);
+  assert.match(source, /X-Hermes-Session-Key/);
   assert.match(source, /chat\/completions/);
   assert.match(source, /function cleanModelReply\(/);
   assert.doesNotMatch(source, /קיבלתי את ההודעה שלך/);
@@ -153,15 +199,20 @@ test('dashboard chatbot uses agent-chat responses instead of receipt-only fallba
   const reply = await fetch(`${BASE}/api/chat/nous`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: BASE },
-    body: JSON.stringify({ text: 'תענה לי כמו צאט אמיתי' }),
+    body: JSON.stringify({ text: 'תענה לי כמו צאט אמיתי ותבדוק משהו עם כלי אם צריך' }),
   });
   assert.equal(reply.status, 200);
   const body = await reply.json();
   assert.equal(body.ok, true);
   assert.equal(body.mode, 'agent-chat');
-  assert.equal(body.provider, 'local-fallback');
+  assert.equal(body.provider, 'hermes-agent');
+  assert.equal(body.model, 'hermes-agent');
+  assert.match(body.reply, /Hermes Agent|כלים|צ׳אט/);
   assert.doesNotMatch(body.reply, /קיבלתי|received|fallback|dashboard chat mode/i);
-  assert.match(body.reply, /צ׳אט|צאט|לעזור/);
+  assert.equal(lastHermesRequest.auth, 'Bearer test-hermes-key');
+  assert.match(lastHermesRequest.sessionKey, /^dashboard:nous:/);
+  assert.equal(lastHermesRequest.body.model, 'hermes-agent');
+  assert.equal(lastHermesRequest.body.stream, false);
 });
 
 test('telegram reply webhook routes exist and persist chats for dashboard send targets', async () => {

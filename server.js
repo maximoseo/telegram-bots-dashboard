@@ -389,6 +389,25 @@ function containsPotentialSecret(text) {
   return /(sk-[A-Za-z0-9_-]{20,}|AIza[\w-]{20,}|xox[baprs]-|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]+PRIVATE KEY-----)/.test(String(text || ''));
 }
 
+function normalizeOpenAiBaseUrl(value, defaultPath = '/v1') {
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  if (!raw) return '';
+  return raw.endsWith(defaultPath) ? raw : `${raw}${defaultPath}`;
+}
+
+function hermesAgentConfig(text = '') {
+  if (containsPotentialSecret(text)) return null;
+  const baseUrl = normalizeOpenAiBaseUrl(process.env.HERMES_API_BASE_URL || process.env.HERMES_AGENT_BASE_URL || '');
+  const apiKey = process.env.HERMES_API_KEY || process.env.HERMES_AGENT_API_KEY || '';
+  if (!baseUrl || !apiKey) return null;
+  return {
+    provider: 'hermes-agent',
+    apiKey,
+    baseUrl,
+    model: process.env.HERMES_MODEL || process.env.API_SERVER_MODEL_NAME || 'hermes-agent'
+  };
+}
+
 function llmConfig(text = '') {
   if (containsPotentialSecret(text)) return null;
   if (process.env.OPENAI_API_KEY) {
@@ -436,12 +455,13 @@ async function recentConversationMessages(conversationId, limit = 8) {
 
 function toChatMessages(bot, text, history = []) {
   const system = [
-    'You are a real conversational AI assistant inside a Telegram Bots Dashboard.',
+    'You are Hermes Agent powering a real conversational agent inside a Telegram Bots Dashboard.',
     'Reply in the user\'s language; if the user writes Hebrew, reply in Hebrew.',
     'Be helpful, direct, natural, and task-oriented, like a strong agent chat assistant.',
+    'When connected to Hermes Agent, use the agent runtime and tools available on that host to actually research, inspect, verify, or take safe actions instead of only explaining.',
     'Do not answer with receipt-only phrases such as "I received your message" or "קיבלתי את ההודעה".',
     'Do not describe yourself as a fallback, demo, dashboard mode, or basic connection.',
-    'If you cannot actually perform an external side effect from this chat, say what information or permission is needed, then still provide the best useful answer.',
+    'If a requested external side effect needs missing permission or credentials, say exactly what is needed, then still provide the best useful answer.',
     `Bot display name: ${bot?.name || 'Dashboard bot'}. Telegram username: ${bot?.username || 'unknown'}.`
   ].join('\n');
 
@@ -462,37 +482,77 @@ function cleanModelReply(reply) {
     .trim();
 }
 
+function responseTextFromOpenAiPayload(data) {
+  return cleanModelReply(
+    data?.choices?.[0]?.message?.content ||
+    data?.output_text ||
+    data?.response?.output_text ||
+    ''
+  );
+}
+
+function hermesSessionKey(bot, conversationId = null) {
+  const raw = `dashboard:${bot?.id || 'bot'}:${conversationId || 'transient'}`;
+  return raw.replace(/[^a-zA-Z0-9:_-]/g, '_').slice(0, 180);
+}
+
+function hermesHealthUrl(config) {
+  return config.baseUrl.replace(/\/v1$/, '') + '/health';
+}
+
+async function callOpenAiCompatibleChat(config, bot, text, history, conversationId = null, timeoutMs = 25000) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
+    ...(config.provider === 'openrouter' ? {
+      'HTTP-Referer': PUBLIC_BASE_URL || DEPLOY_PUBLIC_BASE_URL,
+      'X-Title': 'Telegram Bots Dashboard'
+    } : {}),
+    ...(config.provider === 'hermes-agent' ? {
+      'X-Hermes-Session-Key': hermesSessionKey(bot, conversationId)
+    } : {})
+  };
+
+  const resp = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: config.model,
+      messages: toChatMessages(bot, text, history),
+      temperature: 0.4,
+      max_tokens: config.provider === 'hermes-agent' ? 1800 : 900,
+      stream: false
+    })
+  }, timeoutMs);
+
+  if (!resp.ok) {
+    let detail = '';
+    try { detail = String(await resp.text()).slice(0, 300); } catch (_) {}
+    throw new Error(`${config.provider} chat failed: ${resp.status}${detail ? ` ${detail}` : ''}`);
+  }
+  const data = await resp.json();
+  const reply = responseTextFromOpenAiPayload(data);
+  if (!reply) throw new Error(`${config.provider} returned an empty reply`);
+  return { reply, provider: config.provider, model: config.model };
+}
+
 async function generateAgentReply(bot, text, conversationId = null) {
-  const config = llmConfig();
   const history = await recentConversationMessages(conversationId);
+  const hermesConfig = hermesAgentConfig(text);
+  if (hermesConfig) {
+    try {
+      return await callOpenAiCompatibleChat(hermesConfig, bot, text, history, conversationId, 85000);
+    } catch (err) {
+      console.error('Hermes Agent chat generation failed:', err.message);
+      // Continue to LLM fallback so the dashboard still answers if the agent backend is temporarily unreachable.
+    }
+  }
+
+  const config = llmConfig(text);
   if (!config) return { reply: buildFallbackChatReply(bot, text), provider: 'local-fallback' };
 
   try {
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
-      ...(config.provider === 'openrouter' ? {
-        'HTTP-Referer': PUBLIC_BASE_URL || DEPLOY_PUBLIC_BASE_URL,
-        'X-Title': 'Telegram Bots Dashboard'
-      } : {})
-    };
-
-    const resp = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: config.model,
-        messages: toChatMessages(bot, text, history),
-        temperature: 0.6,
-        max_tokens: 900
-      })
-    }, 25000);
-
-    if (!resp.ok) throw new Error(`${config.provider} chat failed: ${resp.status}`);
-    const data = await resp.json();
-    const reply = cleanModelReply(data?.choices?.[0]?.message?.content);
-    if (!reply) throw new Error(`${config.provider} returned an empty reply`);
-    return { reply, provider: config.provider, model: config.model };
+    return await callOpenAiCompatibleChat(config, bot, text, history, conversationId, 25000);
   } catch (err) {
     console.error('AI chat generation failed:', err.message);
     return { reply: buildFallbackChatReply(bot, text), provider: 'local-fallback', error: err.message };
@@ -1039,8 +1099,30 @@ app.get('/api/export/:botId', async (req, res) => {
   }
 });
 
+app.get('/api/agent/status', async (_, res) => {
+  const config = hermesAgentConfig('');
+  if (!config) {
+    return res.json({ ok: true, agentConfigured: false, provider: null, message: 'Hermes Agent API is not configured for this dashboard service.' });
+  }
+
+  try {
+    const healthResp = await fetchWithTimeout(hermesHealthUrl(config), {}, 5000);
+    let health = null;
+    try { health = await healthResp.json(); } catch (_) {}
+    return res.json({
+      ok: healthResp.ok,
+      agentConfigured: true,
+      provider: config.provider,
+      model: config.model,
+      healthStatus: health?.status || (healthResp.ok ? 'ok' : 'error')
+    });
+  } catch (err) {
+    return res.status(502).json({ ok: false, agentConfigured: true, provider: config.provider, model: config.model, error: 'Hermes Agent API is unreachable' });
+  }
+});
+
 // Health
-app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime(), ...tokenStatus() }));
+app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime(), agentConfigured: !!hermesAgentConfig(''), ...tokenStatus() }));
 
 // API fallback: unknown API routes should return JSON, not the SPA HTML.
 app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found', path: req.originalUrl }));
