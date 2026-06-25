@@ -118,6 +118,19 @@ test('same-origin CSRF protection remains on mutation endpoints', async () => {
   assert.equal(crossOrigin.status, 403);
 });
 
+test('dashboard embeds MaximoSEO dashboards panel exactly once without duplicate tabs or frames', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const dashboardUrlMatches = source.match(/https:\/\/dashboards-panel\.maximo-seo\.ai\//g) || [];
+  const dashboardsTabMatches = source.match(/id="dashboardsTab"/g) || [];
+  const dashboardsFrameMatches = source.match(/id="dashboardsFrame"/g) || [];
+
+  assert.equal(dashboardsTabMatches.length, 1);
+  assert.equal(dashboardsFrameMatches.length, 1);
+  assert.equal(dashboardUrlMatches.length, 2); // iframe src + explicit "Open" link only
+  assert.match(source, /data-tab="dashboards"/);
+  assert.match(source, /function reloadDashboardsPanel\(\)/);
+});
+
 test('dashboard chatbot works without an active Telegram chat', async () => {
   const source = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
   assert.match(source, /\/api\/chat\/\$\{activeBot\.id\}/);

@@ -115,6 +115,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 .stat-card .label{font-size:9px;color:var(--mt);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
 .stat-card.green .num{color:var(--gn2)}.stat-card.blue .num{color:var(--ac2)}.stat-card.yellow .num{color:var(--yl)}.stat-card.red .num{color:var(--rd)}
 
+/* Dashboards panel embed */
+.dashboards-panel{height:calc(100vh - 92px);display:flex;flex-direction:column;min-height:0}
+.dashboards-toolbar{padding:10px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--s1)}
+.dashboards-toolbar .copy{min-width:0}
+.dashboards-toolbar h4{font-size:12px;font-weight:700;margin-bottom:2px}
+.dashboards-toolbar p{font-size:9px;color:var(--mt);line-height:1.35}
+.dashboards-actions{display:flex;gap:6px;flex-shrink:0}
+.dashboards-actions a,.dashboards-actions button{background:var(--s3);border:1px solid var(--b1);color:var(--t2);padding:5px 8px;border-radius:6px;font-size:10px;text-decoration:none;cursor:pointer;font-family:inherit;white-space:nowrap}
+.dashboards-actions a:hover,.dashboards-actions button:hover{background:var(--b1);color:var(--t1)}
+.dashboards-frame-wrap{flex:1;min-height:360px;background:var(--bg);position:relative}
+.dashboards-frame{width:100%;height:100%;border:0;background:var(--bg)}
+
 /* Empty */
 .empty{text-align:center;padding:30px 16px;color:var(--mt)}
 .empty .icon{font-size:36px;opacity:.4;margin-bottom:6px}
@@ -213,11 +225,16 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
   .chat-input button{padding:12px 18px;font-size:15px;min-height:48px}
 
   /* Right panel (More tab) */
-  .right-panel .tab{padding:14px;font-size:13px;min-height:48px}
+  .right-panel .tab{padding:14px 8px;font-size:12px;min-height:48px}
   .search-box input{font-size:16px;padding:12px 14px}
   .project-item{padding:14px;min-height:60px}
   .project-item h4{font-size:14px}
   .project-item p{font-size:12px}
+  .dashboards-panel{height:100%}
+  .dashboards-toolbar{padding:12px;align-items:flex-start;flex-direction:column}
+  .dashboards-actions{width:100%}
+  .dashboards-actions a,.dashboards-actions button{flex:1;text-align:center;padding:10px 8px;font-size:12px}
+  .dashboards-frame-wrap{min-height:calc(100vh - 190px);min-height:calc(100dvh - 190px)}
   .stats-grid{gap:10px;padding:14px}
   .stat-card{padding:16px}
   .stat-card .num{font-size:26px}
@@ -290,6 +307,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
     <div class="tabs">
       <div class="tab active" data-tab="projects" onclick="switchTab('projects')">📁 Projects</div>
       <div class="tab" data-tab="stats" onclick="switchTab('stats')">📊 Stats</div>
+      <div class="tab" data-tab="dashboards" onclick="switchTab('dashboards')">🧭 Dashboards</div>
     </div>
     
     <div id="projectsTab">
@@ -312,6 +330,29 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
       <div style="padding:10px">
         <h4 style="font-size:11px;color:var(--mt);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Per Bot</h4>
         <div id="botStats"></div>
+      </div>
+    </div>
+
+    <div id="dashboardsTab" class="dashboards-panel" style="display:none">
+      <div class="dashboards-toolbar">
+        <div class="copy">
+          <h4>MaximoSEO Dashboards Panel</h4>
+          <p>Live estate overview embedded once here for quick routing without duplicating dashboard records.</p>
+        </div>
+        <div class="dashboards-actions">
+          <button type="button" onclick="reloadDashboardsPanel()">Reload</button>
+          <a href="https://dashboards-panel.maximo-seo.ai/" target="_blank" rel="noopener noreferrer">Open</a>
+        </div>
+      </div>
+      <div class="dashboards-frame-wrap">
+        <iframe
+          id="dashboardsFrame"
+          class="dashboards-frame"
+          title="MaximoSEO Dashboards Panel"
+          src="https://dashboards-panel.maximo-seo.ai/"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade">
+        </iframe>
       </div>
     </div>
   </div>
@@ -826,7 +867,15 @@ function switchTab(tab) {
   document.querySelector(`.right-panel .tab[data-tab="${tab}"]`).classList.add('active');
   document.getElementById('projectsTab').style.display = tab === 'projects' ? '' : 'none';
   document.getElementById('statsTab').style.display = tab === 'stats' ? '' : 'none';
+  document.getElementById('dashboardsTab').style.display = tab === 'dashboards' ? '' : 'none';
   if (tab === 'stats') loadStats();
+}
+
+function reloadDashboardsPanel() {
+  const frame = document.getElementById('dashboardsFrame');
+  if (!frame) return;
+  frame.src = frame.src;
+  showToast('Dashboards panel reloaded', 'info');
 }
 
 // ─── Refresh All ──────────────────────────────────────────────
