@@ -2,6 +2,7 @@ const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -98,10 +99,6 @@ function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
 
 // Bot tokens — loaded from Supabase on startup, updated via /api/setup
 let BOT_TOKENS = Object.create(null);
-BOT_TOKENS.nous = '';
-BOT_TOKENS.claude = '';
-BOT_TOKENS.nous2 = '';
-BOT_TOKENS.codex = '';
 let tokenLoadCompleted = false;
 function configuredTokenCount() {
   return Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
@@ -111,12 +108,53 @@ function tokenStatus() {
 }
 
 // Bot definitions
-const BOTS = [
-  { id: 'nous', name: 'HermesL64 Bot', username: '@HermesL64Bot', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721, envVar: 'BOT_TOKEN_NOUS' },
-  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224', botApiId: 8885902648, envVar: 'BOT_TOKEN_CLAUDE' },
-  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a', botApiId: 8707123248, envVar: 'BOT_TOKEN_NOUS2' },
-  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970, envVar: 'BOT_TOKEN_CODEX' }
+const DEFAULT_BOTS = [
+  { id: 'nous', name: 'HermesL64 Bot', username: '@HermesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0', botApiId: 8609253721, envVar: 'BOT_TOKEN_NOUS' },
+  { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', icon: '🎯', color: '#3b82f6', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224', botApiId: 8885902648, envVar: 'BOT_TOKEN_CLAUDE' },
+  { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', icon: '⚡', color: '#ec4899', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a', botApiId: 8707123248, envVar: 'BOT_TOKEN_NOUS2' },
+  { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', icon: '💻', color: '#f59e0b', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d', botApiId: 8907343970, envVar: 'BOT_TOKEN_CODEX' }
 ];
+
+const CUSTOM_BOTS_FILE = process.env.CUSTOM_BOTS_FILE || path.join('/tmp', 'tgb-custom-bots.json');
+let botConfig = { customBots: [], hiddenDefaultIds: [] };
+let BOTS = [];
+
+function sanitizeBotId(input) {
+  return String(input || '').toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
+}
+function normalizeUsername(username) {
+  if (!username) return '';
+  return username.startsWith('@') ? username : '@' + username;
+}
+function rebuildBots() {
+  const hidden = new Set(botConfig.hiddenDefaultIds || []);
+  BOTS = [
+    ...DEFAULT_BOTS.filter(b => !hidden.has(b.id)).map(b => ({ ...b, locked: true })),
+    ...(botConfig.customBots || []).map(b => ({ ...b, locked: false }))
+  ];
+  for (const bot of BOTS) if (!(bot.id in BOT_TOKENS)) BOT_TOKENS[bot.id] = '';
+}
+function loadBotConfig() {
+  try {
+    if (fsExists(CUSTOM_BOTS_FILE)) {
+      const parsed = JSON.parse(require('fs').readFileSync(CUSTOM_BOTS_FILE, 'utf8'));
+      botConfig = { customBots: Array.isArray(parsed.customBots) ? parsed.customBots : [], hiddenDefaultIds: Array.isArray(parsed.hiddenDefaultIds) ? parsed.hiddenDefaultIds : [] };
+    }
+  } catch (e) { console.error('[BOTS] Failed to load custom bot config:', e.message); }
+  rebuildBots();
+}
+function saveBotConfig() {
+  const fs = require('fs');
+  fs.mkdirSync(path.dirname(CUSTOM_BOTS_FILE), { recursive: true });
+  fs.writeFileSync(CUSTOM_BOTS_FILE, JSON.stringify(botConfig, null, 2));
+  rebuildBots();
+}
+function fsExists(file) { try { return require('fs').existsSync(file); } catch { return false; } }
+function publicBot(bot) {
+  return { id: bot.id, name: bot.name, username: bot.username, model: bot.model, role: bot.role, supabaseId: bot.supabaseId, botApiId: bot.botApiId, icon: bot.icon || '🤖', color: bot.color || '#10b981', locked: !!bot.locked, hasToken: !!BOT_TOKENS[bot.id] };
+}
+
+loadBotConfig();
 
 // ─── Load tokens from environment variables (backup) ──────────
 function loadTokensFromEnv() {
@@ -173,6 +211,16 @@ async function saveTokenToDB(botId, token) {
     console.error('Failed to save token:', e.message);
   }
 }
+async function deleteTokenFromDB(botId) {
+  try {
+    await fetchWithTimeout(`${SB_URL}/rest/v1/bot_tokens?bot_id=eq.${encodeURIComponent(botId)}`, {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+    });
+  } catch (e) {
+    console.error('Failed to delete token:', e.message);
+  }
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -227,12 +275,80 @@ async function tgApi(botId, method, body = null) {
   return data.result;
 }
 
+
+// ─── Bot Management ───────────────────────────────────────────
+app.get('/api/bots', (req, res) => {
+  res.json({ bots: BOTS.map(publicBot), botfather: { automaticPullSupported: false, reason: 'Telegram Bot API does not expose a BotFather endpoint to list a user\'s bots or retrieve tokens. Use /token in @BotFather manually, then paste a token here; the dashboard auto-imports name/username via getMe.' } });
+});
+
+app.post('/api/bots', setupLimiter, async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
+  try {
+    const { token, name, role, model, icon, color } = req.body || {};
+    if (!token || String(token).trim().length < 20) return res.status(400).json({ error: 'Valid bot token required' });
+    const testResp = await fetch(`https://api.telegram.org/bot${String(token).trim()}/getMe`);
+    const testData = await testResp.json();
+    if (!testData.ok) return res.status(400).json({ error: 'Invalid token: ' + (testData.description || 'unknown') });
+    const info = testData.result;
+    const id = sanitizeBotId(`bot_${info.id || info.username || crypto.randomUUID()}`);
+    if (BOTS.some(b => b.id === id)) return res.status(409).json({ error: 'Bot already exists', bot: BOTS.find(b => b.id === id) });
+    const bot = {
+      id,
+      name: String(name || info.first_name || info.username || 'Telegram Bot').slice(0, 80),
+      username: normalizeUsername(info.username || ''),
+      model: String(model || 'Custom').slice(0, 40),
+      role: String(role || 'Custom Bot').slice(0, 80),
+      supabaseId: crypto.randomUUID(),
+      botApiId: info.id,
+      icon: String(icon || '🤖').slice(0, 4),
+      color: /^#[0-9a-fA-F]{6}$/.test(color || '') ? color : '#10b981',
+      envVar: ''
+    };
+    botConfig.customBots.push(bot);
+    BOT_TOKENS[id] = String(token).trim();
+    saveBotConfig();
+    await saveTokenToDB(id, BOT_TOKENS[id]);
+    res.json({ ok: true, bot: publicBot(bot), telegram: info });
+  } catch (err) {
+    console.error('Add bot error:', err.message);
+    res.status(500).json({ error: 'Failed to add bot' });
+  }
+});
+
+app.delete('/api/bots/:botId', setupLimiter, async (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
+  const botId = req.params.botId;
+  const bot = BOTS.find(b => b.id === botId);
+  if (!bot) return res.status(404).json({ error: 'Bot not found' });
+  if (DEFAULT_BOTS.some(b => b.id === botId)) {
+    botConfig.hiddenDefaultIds = Array.from(new Set([...(botConfig.hiddenDefaultIds || []), botId]));
+  } else {
+    botConfig.customBots = (botConfig.customBots || []).filter(b => b.id !== botId);
+  }
+  delete BOT_TOKENS[botId];
+  saveBotConfig();
+  await deleteTokenFromDB(botId);
+  res.json({ ok: true, bots: BOTS.map(publicBot) });
+});
+
+app.post('/api/bots/restore-defaults', setupLimiter, (req, res) => {
+  const csrf = validateCSRF(req);
+  if (!csrf.valid) return res.status(403).json({ error: csrf.error });
+  botConfig.hiddenDefaultIds = [];
+  saveBotConfig();
+  res.json({ ok: true, bots: BOTS.map(publicBot) });
+});
+
+app.get('/api/botfather/status', (req, res) => {
+  res.json({ automaticPullSupported: false, officialApiAvailable: false, message: 'BotFather does not provide an official Bot API endpoint for listing your bots or extracting tokens. Manual /token in @BotFather is required; this dashboard can auto-import metadata after you paste a token.' });
+});
+
 // ─── Setup Endpoint ──────────────────────────────────────────
 app.get('/api/setup/status', (req, res) => {
   const status = tokenStatus();
-  res.json({ ...status, bots: BOTS.map(b => ({
-    id: b.id, name: b.name, hasToken: !!BOT_TOKENS[b.id]
-  }))});
+  res.json({ ...status, bots: BOTS.map(publicBot) });
 });
 
 app.post('/api/setup/token', setupLimiter, async (req, res) => {

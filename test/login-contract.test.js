@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
@@ -27,6 +28,7 @@ test.before(async () => {
     env: {
       ...process.env,
       PORT: String(PORT),
+      CUSTOM_BOTS_FILE: path.join(os.tmpdir(), `tgb-custom-bots-${Date.now()}.json`),
       SUPABASE_URL: 'http://127.0.0.1:9',
       SUPABASE_SERVICE_ROLE_KEY: '',
     },
@@ -43,12 +45,15 @@ test.after(async () => {
   await new Promise((resolve) => server.once('exit', resolve));
 });
 
-test('frontend does not prompt for a dashboard password', () => {
+test('frontend does not prompt for a dashboard password and loads bots dynamically', () => {
   const source = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
   assert.equal(source.includes('window.prompt'), false);
   assert.equal(source.includes('Enter Telegram Bots Dashboard password'), false);
   assert.equal(source.includes('tgbDashboardSession'), false);
-  assert.match(source, /async function authFetch\(url, options = \{\}\) \{\s*return fetch\(url, options\);\s*\}/);
+  assert.match(source, /let BOTS = \[\];/);
+  assert.match(source, /async function loadBots\(\)/);
+  assert.match(source, /async function addBotFromToken\(\)/);
+  assert.match(source, /async function deleteBot\(botId\)/);
 });
 
 test('auth-check reports the dashboard is open without password', async () => {
@@ -57,7 +62,13 @@ test('auth-check reports the dashboard is open without password', async () => {
   assert.deepEqual(await res.json(), { ok: true, needsAuth: false });
 });
 
-test('dashboard APIs are reachable without X-Session-Id', async () => {
+test('dashboard APIs and bot management metadata are reachable without X-Session-Id', async () => {
+  const bots = await fetch(`${BASE}/api/bots`);
+  assert.equal(bots.status, 200);
+  const botsBody = await bots.json();
+  assert.equal(botsBody.bots.length, 4);
+  assert.equal(botsBody.botfather.automaticPullSupported, false);
+
   const setup = await fetch(`${BASE}/api/setup/status`);
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
@@ -70,6 +81,26 @@ test('dashboard APIs are reachable without X-Session-Id', async () => {
   assert.equal(healthBody.nous.error, 'Token not configured');
 });
 
+test('bot delete and restore default bots work with same-origin CSRF', async () => {
+  const del = await fetch(`${BASE}/api/bots/nous`, {
+    method: 'DELETE',
+    headers: { Origin: BASE },
+  });
+  assert.equal(del.status, 200);
+  const afterDelete = await del.json();
+  assert.equal(afterDelete.ok, true);
+  assert.equal(afterDelete.bots.some((b) => b.id === 'nous'), false);
+
+  const restore = await fetch(`${BASE}/api/bots/restore-defaults`, {
+    method: 'POST',
+    headers: { Origin: BASE },
+  });
+  assert.equal(restore.status, 200);
+  const afterRestore = await restore.json();
+  assert.equal(afterRestore.ok, true);
+  assert.equal(afterRestore.bots.some((b) => b.id === 'nous'), true);
+});
+
 test('same-origin CSRF protection remains on mutation endpoints', async () => {
   const missingOrigin = await fetch(`${BASE}/api/setup/token`, {
     method: 'POST',
@@ -78,10 +109,10 @@ test('same-origin CSRF protection remains on mutation endpoints', async () => {
   });
   assert.equal(missingOrigin.status, 403);
 
-  const crossOrigin = await fetch(`${BASE}/api/setup/token`, {
+  const crossOrigin = await fetch(`${BASE}/api/bots`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' },
-    body: JSON.stringify({ botId: 'nous', token: 'invalid' }),
+    body: JSON.stringify({ token: 'invalid' }),
   });
   assert.equal(crossOrigin.status, 403);
 });
