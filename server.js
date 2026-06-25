@@ -198,7 +198,13 @@ BOT_TOKENS.nous = '';
 BOT_TOKENS.claude = '';
 BOT_TOKENS.nous2 = '';
 BOT_TOKENS.codex = '';
-let tokensLoaded = false;
+let tokenLoadCompleted = false;
+function configuredTokenCount() {
+  return Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
+}
+function tokenStatus() {
+  return { tokenLoadCompleted, configured: configuredTokenCount(), total: BOTS.length, tokensLoaded: configuredTokenCount() > 0 };
+}
 
 // Bot definitions
 const BOTS = [
@@ -239,7 +245,7 @@ async function loadTokensFromDB() {
         filled++;
       }
     }
-    if (Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length > 0) tokensLoaded = true;
+    // tokenLoadCompleted is set after both DB and env fallback loaders run.
     console.log(`✅ Bot tokens from Supabase (backup): filled ${filled} empty slot(s). Total configured: ${Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length}`);
   } catch (e) {
     console.log('⚠️ Could not load tokens from DB:', e.message);
@@ -323,8 +329,8 @@ async function tgApi(botId, method, body = null) {
 
 // ─── Setup Endpoint ──────────────────────────────────────────
 app.get('/api/setup/status', (req, res) => {
-  const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
-  res.json({ configured, total: 4, tokensLoaded, bots: BOTS.map(b => ({
+  const status = tokenStatus();
+  res.json({ ...status, bots: BOTS.map(b => ({
     id: b.id, name: b.name, hasToken: !!BOT_TOKENS[b.id]
   }))});
 });
@@ -538,7 +544,10 @@ app.get('/api/export/:botId', requireAuth, async (req, res) => {
 });
 
 // Health
-app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime(), tokensLoaded }));
+app.get('/api/health', (_, res) => res.json({ ok: true, uptime: process.uptime(), ...tokenStatus() }));
+
+// API fallback: unknown API routes should return JSON, not the SPA HTML.
+app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found', path: req.originalUrl }));
 
 // SPA fallback
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
@@ -567,9 +576,8 @@ setInterval(() => {
 // Start server immediately — Render health checks need a fast listen().
 // Token loading happens in background so a slow/hung Supabase never blocks startup.
 app.listen(PORT, '0.0.0.0', () => {
-  const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
-  console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/4 tokens pre-configured)`);
-  tokensLoaded = true;
+  const configured = configuredTokenCount();
+  console.log(`🤖 Telegram Bots Dashboard on :${PORT} (${configured}/${BOTS.length} tokens pre-configured)`);
 });
 
 // Background: load tokens from Supabase, then fill gaps from env vars
@@ -577,6 +585,7 @@ loadTokensFromDB()
   .catch(err => console.error('❌ loadTokensFromDB failed:', err.message))
   .finally(() => {
     loadTokensFromEnv();
-    const configured = Object.keys(BOT_TOKENS).filter(k => BOT_TOKENS[k]).length;
-    console.log(`🔑 Tokens after background load: ${configured}/4`);
+    tokenLoadCompleted = true;
+    const configured = configuredTokenCount();
+    console.log(`🔑 Tokens after background load: ${configured}/${BOTS.length}`);
   });

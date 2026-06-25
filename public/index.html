@@ -365,7 +365,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100
 <script>
 // ─── Bot Definitions ──────────────────────────────────────────
 const BOTS = [
-  { id: 'nous', name: 'HemesL64 Bot', username: '@HemesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0' },
+  { id: 'nous', name: 'HermesL64 Bot', username: '@HermesL64Bot', icon: '🧠', color: '#10b981', model: 'Nous', role: 'General Purpose', supabaseId: '7e3c5278-f01f-4c62-9d8a-aba2599982e0' },
   { id: 'claude', name: 'HermesClaude64 Bot', username: '@HermesClaude64Bot', icon: '🎯', color: '#3b82f6', model: 'Claude', role: 'Advanced Reasoning', supabaseId: 'c186e227-6ff6-4f9e-8906-5867e1f14224' },
   { id: 'nous2', name: 'HermesNous64 Bot', username: '@HermesNous64Bot', icon: '⚡', color: '#ec4899', model: 'Nous', role: 'Fast & Efficient', supabaseId: '594619d9-e765-4d82-b289-953390aa6d0a' },
   { id: 'codex', name: 'HermesCodexNew64 Bot', username: '@HermesCodexNew64Bot', icon: '💻', color: '#f59e0b', model: 'Codex', role: 'Code Generation', supabaseId: '630b8adc-0756-41e3-91a8-88bd0ff1443d' }
@@ -378,6 +378,42 @@ let botHealth = {};
 let searchTimeout = null;
 let autoRefreshInterval = null;
 let mobileReady = false; // set true after init so the default bot selection doesn't auto-switch tabs
+let dashboardSession = localStorage.getItem('tgbDashboardSession') || '';
+
+async function loginDashboard() {
+  const password = window.prompt('Enter Telegram Bots Dashboard password');
+  if (!password) throw new Error('Login required');
+  const resp = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.token) throw new Error(data.error || 'Login failed');
+  dashboardSession = data.token;
+  localStorage.setItem('tgbDashboardSession', dashboardSession);
+  return dashboardSession;
+}
+
+async function authFetch(url, options = {}) {
+  const withSession = (token) => fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), 'X-Session-Id': token }
+  });
+  let resp = dashboardSession ? await withSession(dashboardSession) : null;
+  if (!resp || resp.status === 401) {
+    dashboardSession = '';
+    localStorage.removeItem('tgbDashboardSession');
+    const token = await loginDashboard();
+    resp = await withSession(token);
+  }
+  if (resp.status === 401) {
+    dashboardSession = '';
+    localStorage.removeItem('tgbDashboardSession');
+  }
+  return resp;
+}
+
 
 // ─── Mobile Tab Controller ────────────────────────────────────
 function isMobile() { return window.matchMedia('(max-width:768px)').matches; }
@@ -421,7 +457,7 @@ function renderBots() {
 // ─── Bot Health Check ─────────────────────────────────────────
 async function checkBotHealth() {
   try {
-    const resp = await fetch('/api/bots/health');
+    const resp = await authFetch('/api/bots/health');
     botHealth = await resp.json();
     renderBots();
   } catch (e) {
@@ -458,7 +494,7 @@ async function loadConversation(botId) {
   el.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Loading conversation...</p></div>';
   
   try {
-    const resp = await fetch(`/api/sb/messages?bot_id=eq.${bot.supabaseId}&order=created_at.desc&limit=100`);
+    const resp = await authFetch(`/api/sb/messages?bot_id=eq.${bot.supabaseId}&order=created_at.desc&limit=100`);
     const msgs = await resp.json();
     
     if (!Array.isArray(msgs) || !msgs.length) {
@@ -522,7 +558,7 @@ async function sendMessage() {
   
   // Store in Supabase
   try {
-    const storeResp = await fetch('/api/sb/messages', {
+    const storeResp = await authFetch('/api/sb/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -547,7 +583,7 @@ async function sendMessage() {
   // Try to send via Telegram and get response
   try {
     // First, get available chats for this bot
-    const chatsResp = await fetch(`/api/telegram/${activeBot.id}/chats`);
+    const chatsResp = await authFetch(`/api/telegram/${activeBot.id}/chats`);
     if (!chatsResp.ok) {
       throw new Error(`Chats fetch failed: ${chatsResp.status}`);
     }
@@ -557,7 +593,7 @@ async function sendMessage() {
       // Send to the most recent chat
       const chatId = chatsData.chats[0].id;
       
-      const sendResp = await fetch(`/api/telegram/${activeBot.id}/send`, {
+      const sendResp = await authFetch(`/api/telegram/${activeBot.id}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId, text })
@@ -582,7 +618,7 @@ async function sendMessage() {
       addMessage('system', `ℹ️ No active Telegram chats found for ${activeBot.name}. Start a conversation on Telegram first: ${activeBot.username}`);
       
       // Still try to get recent updates
-      const updatesResp = await fetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
+      const updatesResp = await authFetch(`/api/telegram/${activeBot.id}/updates?limit=10`);
       if (!updatesResp.ok) {
         throw new Error(`Updates fetch failed: ${updatesResp.status}`);
       }
@@ -609,7 +645,7 @@ async function pollBotResponse(botId, chatId) {
   const poll = async () => {
     attempts++;
     try {
-      const resp = await fetch(`/api/telegram/${botId}/updates?limit=5`);
+      const resp = await authFetch(`/api/telegram/${botId}/updates?limit=5`);
       const data = await resp.json();
       
       if (data.ok && data.result) {
@@ -625,7 +661,7 @@ async function pollBotResponse(botId, chatId) {
           
           // Store in Supabase
           try {
-            await fetch('/api/sb/messages', {
+            await authFetch('/api/sb/messages', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -702,7 +738,7 @@ async function loadProjects(botId) {
       const bot = BOTS.find(b => b.id === botId);
       url = `/api/sb/conversations?bot_id=eq.${bot.supabaseId}&order=updated_at.desc&limit=50`;
     }
-    const resp = await fetch(url);
+    const resp = await authFetch(url);
     const convos = await resp.json();
     projects = Array.isArray(convos) ? convos : [];
     
@@ -744,7 +780,7 @@ async function handleSearch(query) {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(async () => {
     try {
-      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const resp = await authFetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await resp.json();
       
       let html = '';
@@ -785,11 +821,11 @@ async function openProject(id) {
   document.getElementById('globalSearch').value = '';
   
   try {
-    const resp = await fetch(`/api/sb/conversations?id=eq.${id}&select=*`);
+    const resp = await authFetch(`/api/sb/conversations?id=eq.${id}&select=*`);
     const data = await resp.json();
     if (data.length) {
       const c = data[0];
-      const msgsResp = await fetch(`/api/sb/messages?conversation_id=eq.${id}&order=created_at.asc&limit=200`);
+      const msgsResp = await authFetch(`/api/sb/messages?conversation_id=eq.${id}&order=created_at.asc&limit=200`);
       const msgs = await msgsResp.json();
       
       const el = document.getElementById('chatMessages');
@@ -812,7 +848,7 @@ async function openProject(id) {
 async function exportConversation() {
   if (!activeBot) return;
   try {
-    const resp = await fetch(`/api/export/${activeBot.id}`);
+    const resp = await authFetch(`/api/export/${activeBot.id}`);
     const data = await resp.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -828,7 +864,7 @@ async function exportConversation() {
 // ─── Stats ────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const resp = await fetch('/api/stats');
+    const resp = await authFetch('/api/stats');
     const stats = await resp.json();
     
     document.getElementById('statConvos').textContent = stats.totalConversations;
@@ -959,7 +995,7 @@ async function saveToken(botId) {
   if (!token || token === '••••••••') { showToast('Enter a valid token', 'error'); return; }
   
   try {
-    const resp = await fetch('/api/setup/token', {
+    const resp = await authFetch('/api/setup/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ botId, token })
