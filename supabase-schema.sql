@@ -39,3 +39,4 @@ create table if not exists public.conversations (
 
 create index if not exists messages_bot_id_created_at_idx on public.messages (bot_id, created_at desc);
 create index if not exists conversations_bot_id_updated_at_idx on public.conversations (bot_id, updated_at desc);
+create unique index if not exists conversations_bot_id_telegram_user_id_uidx on public.conversations (bot_id, telegram_user_id);

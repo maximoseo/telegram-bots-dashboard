@@ -362,6 +362,86 @@ function chatLabel(chat = {}) {
   return chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' ') || String(chat.id || 'Telegram user');
 }
 
+async function findConversation(bot, telegramChatId) {
+  if (!SB_KEY || !bot || !telegramChatId) return null;
+  const url = `${SB_URL}/rest/v1/conversations?bot_id=eq.${encodeURIComponent(bot.supabaseId)}&telegram_user_id=eq.${encodeURIComponent(String(telegramChatId))}&select=*&limit=1`;
+  const resp = await fetchWithTimeout(url, {
+    headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+  });
+  if (!resp.ok) throw new Error(`Supabase conversation lookup failed: ${resp.status}`);
+  const rows = await resp.json();
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function upsertTelegramConversation(bot, chat, lastMessage = '') {
+  if (!SB_KEY) return { skipped: true, reason: 'Supabase key not configured' };
+  if (!bot || !chat || !chat.id) return { skipped: true, reason: 'Missing bot/chat' };
+
+  const telegramUserId = String(chat.id);
+  const existing = await findConversation(bot, telegramUserId);
+  const payload = {
+    bot_id: bot.supabaseId,
+    telegram_user_id: telegramUserId,
+    username: chat.username || chat.first_name || chat.title || chatLabel(chat),
+    last_message: String(lastMessage || '').slice(0, 500),
+    updated_at: new Date().toISOString()
+  };
+
+  if (existing?.id) {
+    const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/conversations?id=eq.${encodeURIComponent(existing.id)}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({ ...payload, message_count: (existing.message_count || 0) + 1 })
+    });
+    if (!resp.ok) throw new Error(`Supabase conversation update failed: ${resp.status}`);
+    const rows = await resp.json();
+    return { ok: true, conversation: Array.isArray(rows) ? rows[0] : existing };
+  }
+
+  const resp = await fetchWithTimeout(`${SB_URL}/rest/v1/conversations`, {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': `Bearer ${SB_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify({ ...payload, message_count: 1, created_at: new Date().toISOString() })
+  });
+  if (!resp.ok) throw new Error(`Supabase conversation insert failed: ${resp.status}`);
+  const rows = await resp.json();
+  return { ok: true, conversation: Array.isArray(rows) ? rows[0] : null };
+}
+
+async function listStoredTelegramChats(bot) {
+  if (!SB_KEY || !bot) return [];
+  const url = `${SB_URL}/rest/v1/conversations?bot_id=eq.${encodeURIComponent(bot.supabaseId)}&select=id,telegram_user_id,username,last_message,updated_at&order=updated_at.desc&limit=100`;
+  const resp = await fetchWithTimeout(url, {
+    headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+  });
+  if (!resp.ok) throw new Error(`Supabase conversations fetch failed: ${resp.status}`);
+  const rows = await resp.json();
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter(row => row.telegram_user_id)
+    .map(row => ({
+      id: row.telegram_user_id,
+      type: 'private',
+      firstName: row.username && !String(row.username).startsWith('@') ? row.username : '',
+      lastName: '',
+      username: row.username || '',
+      lastMessage: row.last_message || '',
+      lastDate: row.updated_at,
+      conversationId: row.id,
+      source: 'supabase'
+    }));
+}
+
 async function registerConfiguredWebhooks(baseUrl) {
   if (!baseUrl) return;
   const configured = BOTS.filter(bot => BOT_TOKENS[bot.id]);
@@ -541,8 +621,17 @@ app.post('/api/telegram/:botId/webhook', async (req, res) => {
   const from = msg.from || {};
   const receivedAt = msg.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();
 
+  let conversationId = null;
+  try {
+    const conversationResult = await upsertTelegramConversation(bot, chat, inboundText);
+    conversationId = conversationResult?.conversation?.id || null;
+  } catch (err) {
+    console.error('Failed to store Telegram conversation:', err.message);
+  }
+
   await saveMessageRow({
     bot_id: bot.supabaseId,
+    conversation_id: conversationId,
     direction: 'inbound',
     sender_type: 'user',
     content_type: msg.text ? 'text' : 'message',
@@ -589,6 +678,14 @@ app.post('/api/telegram/:botId/send', async (req, res) => {
     const result = await tgApi(req.params.botId, 'sendMessage', {
       chat_id: chatId, text, parse_mode: parseMode || 'HTML'
     });
+    const bot = BOTS.find(b => b.id === req.params.botId);
+    if (bot) {
+      try {
+        await upsertTelegramConversation(bot, { id: chatId, username: String(chatId) }, text);
+      } catch (err) {
+        console.error('sendMessage conversation update failed:', err.message);
+      }
+    }
     res.json({ ok: true, result });
   } catch (err) {
     console.error('sendMessage error:', err.message);
@@ -597,7 +694,15 @@ app.post('/api/telegram/:botId/send', async (req, res) => {
 });
 
 app.get('/api/telegram/:botId/chats', async (req, res) => {
+  const bot = BOTS.find(b => b.id === req.params.botId);
+  if (!bot || !BOT_TOKENS[req.params.botId]) return res.status(404).json({ ok: false, error: 'Bot not configured' });
   try {
+    const storedChats = await listStoredTelegramChats(bot);
+    if (storedChats.length > 0) return res.json({ ok: true, chats: storedChats, source: 'supabase' });
+
+    // Fallback for bots without webhooks. When a webhook is active, Telegram's
+    // getUpdates is expected to be empty or unavailable; persisted webhook
+    // conversations above are the source of truth for dashboard send targets.
     const updates = await tgApi(req.params.botId, 'getUpdates', { limit: 100 });
     const chats = {};
     for (const u of updates) {
@@ -610,15 +715,16 @@ app.get('/api/telegram/:botId/chats', async (req, res) => {
             firstName: chat.first_name || '', lastName: chat.last_name || '',
             username: chat.username || '',
             lastMessage: u.message.text || '',
-            lastDate: new Date(u.message.date * 1000).toISOString()
+            lastDate: new Date(u.message.date * 1000).toISOString(),
+            source: 'getUpdates'
           };
         }
       }
     }
-    res.json({ ok: true, chats: Object.values(chats) });
+    res.json({ ok: true, chats: Object.values(chats), source: 'getUpdates' });
   } catch (err) {
     console.error('getChats error:', err.message);
-    res.json({ ok: false, error: 'Telegram API request failed' });
+    res.json({ ok: false, error: 'Telegram chats lookup failed' });
   }
 });
 

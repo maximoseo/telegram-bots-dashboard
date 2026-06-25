@@ -118,11 +118,15 @@ test('same-origin CSRF protection remains on mutation endpoints', async () => {
   assert.equal(crossOrigin.status, 403);
 });
 
-test('telegram reply webhook routes exist and are protected', async () => {
+test('telegram reply webhook routes exist and persist chats for dashboard send targets', async () => {
   const serverSource = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(serverSource, /setWebhook/);
   assert.match(serverSource, /x-telegram-bot-api-secret-token/);
   assert.match(serverSource, /app\.post\('\/api\/telegram\/:botId\/webhook'/);
+  assert.match(serverSource, /upsertTelegramConversation\(bot, chat, inboundText\)/);
+  assert.match(serverSource, /conversation_id: conversationId/);
+  assert.match(serverSource, /listStoredTelegramChats\(bot\)/);
+  assert.match(serverSource, /source: 'supabase'/);
 
   const registerMissingOrigin = await fetch(`${BASE}/api/telegram/nous/webhook/register`, {
     method: 'POST',
