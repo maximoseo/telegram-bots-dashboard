@@ -117,7 +117,8 @@ const DEFAULT_BOTS = [
 
 const CUSTOM_BOTS_FILE = process.env.CUSTOM_BOTS_FILE || path.join('/tmp', 'tgb-custom-bots.json');
 const BOT_CONFIG_ROW_ID = '__dashboard_bot_config__';
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const DEPLOY_PUBLIC_BASE_URL = 'https://tgb-06230145.onrender.com';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || DEPLOY_PUBLIC_BASE_URL || '').replace(/\/$/, '');
 let botConfig = { customBots: [], hiddenDefaultIds: [] };
 let BOTS = [];
 
@@ -453,6 +454,16 @@ async function registerConfiguredWebhooks(baseUrl) {
       console.error(`Webhook auto-register failed for ${bot.id}:`, e.message);
     }
   }
+}
+
+let webhookWatchdogStarted = false;
+function startWebhookWatchdog() {
+  if (webhookWatchdogStarted || !PUBLIC_BASE_URL) return;
+  webhookWatchdogStarted = true;
+  setInterval(() => {
+    if (!tokenLoadCompleted || configuredTokenCount() === 0) return;
+    registerConfiguredWebhooks(PUBLIC_BASE_URL).catch(err => console.error('❌ webhook watchdog failed:', err.message));
+  }, 60 * 1000);
 }
 
 // ─── Bot Management ───────────────────────────────────────────
@@ -874,4 +885,5 @@ loadTokensFromDB()
     if (PUBLIC_BASE_URL && configured > 0) {
       registerConfiguredWebhooks(PUBLIC_BASE_URL).catch(err => console.error('❌ webhook auto-register failed:', err.message));
     }
+    startWebhookWatchdog();
   });
